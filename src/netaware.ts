@@ -9,7 +9,8 @@ export type SignalServer = {
    * our two ends of the connection need to negotiate the connection itself first.
    * They would, for example, exchange IP addresses and which underlying connection method (TCP, UDP, etc.)
    * they support. This {@link send_signal_state} allows both of our servers to exchange shared state.
-   * The channel is provided by the user of {@link FastPeerConnection}.
+   * The channel is provi
+   * ded by the user of {@link FastPeerConnection}.
    *
    * @param state An arbitrary state string the server wants to send to the other end of the {@link FastPeerConnection}.
    * @returns A promise that is fullfilled when the message has been succesfully sent to the other end of
@@ -33,6 +34,7 @@ export type SignalServer = {
 export class FastPeerConnection {
   private readonly signal_server: SignalServer;
   private readonly timeout_ms: number;
+  private readonly message_queue: string[];
 
   /**
    * Make a {@link FastPeerConnection} with a {@link signal_server} and {@link timeout_ms}.
@@ -41,6 +43,7 @@ export class FastPeerConnection {
   constructor(signal_server: SignalServer, timeout_ms: number) {
     this.signal_server = signal_server;
     this.timeout_ms = timeout_ms;
+    this.message_queue = [];
   }
 
   /**
@@ -68,7 +71,9 @@ export class FastPeerConnection {
    * connection.send('Hi!!!');
    * ```
    */
-  //on_ready(): Promise<void> {}
+  on_ready(): Promise<void> {
+    return new Promise((resolve, reject) => {});
+  }
 
   /**
    * If you want to receive every message sent over this channel,
@@ -80,7 +85,9 @@ export class FastPeerConnection {
    * Send data over the WebRTC channel. Messages should be enqueued if a
    * connection has not been established.
    */
-  send(data: string): void {}
+  send(data: string): void {
+    this.message_queue.push(data);
+  }
 
   /**
    * Gracefully shut down and clean up this end of the peer connection.
