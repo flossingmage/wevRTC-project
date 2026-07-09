@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Game Menu</title>
+</head>
+<body>
+    <button id="startBtn">Start</button>
+    <button id="joinBtn">Join</button>
+
+    <script type="module">
+        import { connect } from "./src/test";
+
+        document.getElementById("startBtn").addEventListener("click", () => {
+            connect(true);
+        });
+
+        document.getElementById("joinBtn").addEventListener("click", () => {
+            connect(false);
+        });
+    </script>
+</body>
+</html>
