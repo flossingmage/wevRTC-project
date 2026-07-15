@@ -35,15 +35,62 @@ export class FastPeerConnection {
   private readonly signal_server: SignalServer;
   private readonly timeout_ms: number;
   private readonly message_queue: string[];
+  private readonly connection: RTCPeerConnection;
 
   /**
    * Make a {@link FastPeerConnection} with a {@link signal_server} and {@link timeout_ms}.
    * The connection that makes the first move should begin its work here.
    */
-  constructor(signal_server: SignalServer, timeout_ms: number) {
+  constructor(signal_server: SignalServer, timeout_ms: number, ws: WebSocket) {
     this.signal_server = signal_server;
     this.timeout_ms = timeout_ms;
     this.message_queue = [];
+
+    const config = {
+      iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
+    };
+    this.connection = new RTCPeerConnection(config);
+
+    this.connection.onicecandidate = (event) => {
+      if (event.candidate) {
+        ws.send(
+          JSON.stringify({ type: "ice-candidate", candidate: event.candidate }),
+        );
+      }
+    };
+
+    ws.onmessage = async (message) => {
+      const data = JSON.parse(message.data);
+      console.log("Received message from server of type: " + data.type);
+
+      switch (data.type) {
+        case "offer":
+          await this.connection.setRemoteDescription(
+            new RTCSessionDescription(data.offer),
+          );
+          const answer = await this.connection.createAnswer();
+          await this.connection.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: "answer", answer }));
+          break;
+        case "answer":
+          await this.connection.setRemoteDescription(
+            new RTCSessionDescription(data.answer),
+          );
+          break;
+        case "ice-candidate":
+          await this.connection.addIceCandidate(
+            new RTCIceCandidate(data.candidate),
+          );
+          break;
+      }
+    };
+
+    if (this.signal_server.makes_first_move) {
+      this.connection.createOffer().then((offer) => {
+        this.connection.setLocalDescription(offer);
+        ws.send(JSON.stringify({ type: "offer", offer }));
+      });
+    }
   }
 
   /**
@@ -72,7 +119,14 @@ export class FastPeerConnection {
    * ```
    */
   on_ready(): Promise<void> {
-    return new Promise((resolve, reject) => {});
+    return new Promise((resolve, reject) => {
+      if (this.connection.iceConnectionState === "connected") {
+        resolve();
+      }
+      if (this.connection.iceConnectionState === "failed") {
+        reject("Connection failed");
+      }
+    });
   }
 
   /**

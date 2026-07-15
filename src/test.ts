@@ -1,8 +1,8 @@
 import { FastPeerConnection, type SignalServer } from "./netaware";
 
-const webSocket = new WebSocket("ws://localhost:8080");
+const ws = new WebSocket("ws://localhost:8080");
 
-webSocket.addEventListener("open", () => {
+ws.addEventListener("open", () => {
   console.log("Connected to the server.");
 });
 
@@ -19,5 +19,5 @@ export const connect = (isHost: boolean) => {
   };
   const timeout_ms = 1000;
 
-  const connection = new FastPeerConnection(signal_server, timeout_ms);
+  const connection = new FastPeerConnection(signal_server, timeout_ms, ws);
 };
