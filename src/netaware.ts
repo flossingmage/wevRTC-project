@@ -36,6 +36,7 @@ export class FastPeerConnection {
   private readonly timeout_ms: number;
   private readonly message_queue: string[];
   private readonly connection: RTCPeerConnection;
+  private data_channel!: RTCDataChannel;
 
   /**
    * Make a {@link FastPeerConnection} with a {@link signal_server} and {@link timeout_ms}.
@@ -51,6 +52,30 @@ export class FastPeerConnection {
     };
     this.connection = new RTCPeerConnection(config);
 
+    // they are mostly the same. need to update
+    if (this.signal_server.makes_first_move) {
+      this.data_channel = this.connection.createDataChannel("data");
+      this.data_channel.onopen = () => {
+        this.listen((message) => {
+          console.log(message);
+        });
+        while (this.message_queue.length > 0) {
+          this.send(String(this.message_queue.shift()));
+        }
+      };
+    } else {
+      this.connection.ondatachannel = (event) => {
+        console.log("getting data channel");
+        this.data_channel = event.channel;
+        this.listen((message) => {
+          console.log(message);
+        });
+        while (this.message_queue.length > 0) {
+          this.send(String(this.message_queue.shift()));
+        }
+      };
+    }
+
     this.connection.onicecandidate = (event) => {
       if (event.candidate) {
         ws.send(
@@ -61,8 +86,6 @@ export class FastPeerConnection {
 
     ws.onmessage = async (message) => {
       const data = JSON.parse(message.data);
-      console.log("Received message from server of type: " + data.type);
-
       switch (data.type) {
         case "offer":
           await this.connection.setRemoteDescription(
@@ -86,11 +109,28 @@ export class FastPeerConnection {
     };
 
     if (this.signal_server.makes_first_move) {
-      this.connection.createOffer().then((offer) => {
-        this.connection.setLocalDescription(offer);
+      this.connection.createOffer().then(async (offer) => {
+        await this.connection.setLocalDescription(offer);
         ws.send(JSON.stringify({ type: "offer", offer }));
       });
     }
+
+    this.connection.onconnectionstatechange = () => {
+      switch (this.connection.connectionState) {
+        case "connected":
+          console.log("Connection established");
+          break;
+        case "disconnected":
+          console.log("Connection disconnected");
+          break;
+        case "failed":
+          console.log("Connection failed");
+          break;
+        case "closed":
+          console.log("Connection closed");
+          break;
+      }
+    };
   }
 
   /**
@@ -120,11 +160,22 @@ export class FastPeerConnection {
    */
   on_ready(): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (this.connection.iceConnectionState === "connected") {
+      if (this.connection.connectionState === "connected") {
+        console.log("Connection is ready.");
         resolve();
-      }
-      if (this.connection.iceConnectionState === "failed") {
-        reject("Connection failed");
+      } else if (this.connection.connectionState === "failed") {
+        console.log("Connection failed.");
+        reject();
+      } else {
+        this.connection.addEventListener("connectionstatechange", () => {
+          if (this.connection.connectionState === "connected") {
+            console.log("Connection is ready.");
+            resolve();
+          } else if (this.connection.connectionState === "failed") {
+            console.log("Connection failed.");
+            reject();
+          }
+        });
       }
     });
   }
@@ -133,14 +184,26 @@ export class FastPeerConnection {
    * If you want to receive every message sent over this channel,
    * register the listener before updating the {@link peer_signal_state}.
    */
-  listen(listener: (message: string) => void): void {}
+  listen(listener: (message: string) => void): void {
+    this.data_channel.addEventListener("message", (event) => {
+      listener(event.data);
+    });
+    this.data_channel.send("sending through data channel");
+  }
 
   /**
    * Send data over the WebRTC channel. Messages should be enqueued if a
    * connection has not been established.
    */
   send(data: string): void {
-    this.message_queue.push(data);
+    if (
+      this.data_channel === undefined ||
+      this.data_channel.readyState !== "open"
+    ) {
+      this.message_queue.push(data);
+    } else {
+      this.data_channel.send(data);
+    }
   }
 
   /**

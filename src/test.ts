@@ -6,7 +6,7 @@ ws.addEventListener("open", () => {
   console.log("Connected to the server.");
 });
 
-export const connect = (isHost: boolean) => {
+export const connect = async (isHost: boolean) => {
   console.log("Connecting as", isHost ? "host" : "client");
   const signal_server: SignalServer = {
     makes_first_move: isHost,
@@ -20,4 +20,8 @@ export const connect = (isHost: boolean) => {
   const timeout_ms = 1000;
 
   const connection = new FastPeerConnection(signal_server, timeout_ms, ws);
+
+  await connection.on_ready();
+
+  connection.send("hello from the other side");
 };
