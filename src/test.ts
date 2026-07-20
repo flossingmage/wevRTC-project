@@ -19,9 +19,21 @@ export const connect = async (isHost: boolean) => {
   };
   const timeout_ms = 1000;
 
-  const connection = new FastPeerConnection(signal_server, timeout_ms, ws);
+  const connection = new FastPeerConnection(signal_server, timeout_ms);
+  connection.connect_with_webSockets(ws);
+
+  if (isHost) {
+    const startButten = document.createElement("button") as HTMLButtonElement;
+    startButten.textContent = "start Connection";
+    startButten.addEventListener("click", () => {
+      connection.send_webSocket_offer(ws);
+    });
+    document.body.appendChild(startButten);
+  }
 
   await connection.on_ready();
+
+  // if (isHost) connection.createDataChannel("messages");
 
   connection.send("hello from the other side");
 };

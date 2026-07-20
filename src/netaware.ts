@@ -36,83 +36,42 @@ export class FastPeerConnection {
   private readonly timeout_ms: number;
   private readonly message_queue: string[];
   private readonly connection: RTCPeerConnection;
-  private data_channel!: RTCDataChannel;
+  private data_channels: RTCDataChannel[];
 
   /**
    * Make a {@link FastPeerConnection} with a {@link signal_server} and {@link timeout_ms}.
    * The connection that makes the first move should begin its work here.
    */
-  constructor(signal_server: SignalServer, timeout_ms: number, ws: WebSocket) {
+  constructor(signal_server: SignalServer, timeout_ms: number) {
     this.signal_server = signal_server;
     this.timeout_ms = timeout_ms;
     this.message_queue = [];
+    this.data_channels = [];
 
     const config = {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     };
     this.connection = new RTCPeerConnection(config);
 
-    // they are mostly the same. need to update
     if (this.signal_server.makes_first_move) {
-      this.data_channel = this.connection.createDataChannel("data");
-      this.data_channel.onopen = () => {
-        this.listen((message) => {
-          console.log(message);
-        });
+      const data_channel = this.createDataChannel("message");
+      data_channel.addEventListener("open", () => {
         while (this.message_queue.length > 0) {
           this.send(String(this.message_queue.shift()));
         }
-      };
+      });
     } else {
       this.connection.ondatachannel = (event) => {
         console.log("getting data channel");
-        this.data_channel = event.channel;
-        this.listen((message) => {
+        const data_channel = event.channel;
+        this.data_channels.push(data_channel);
+        this.listen(data_channel, (message) => {
           console.log(message);
         });
         while (this.message_queue.length > 0) {
           this.send(String(this.message_queue.shift()));
         }
       };
-    }
-
-    this.connection.onicecandidate = (event) => {
-      if (event.candidate) {
-        ws.send(
-          JSON.stringify({ type: "ice-candidate", candidate: event.candidate }),
-        );
-      }
-    };
-
-    ws.onmessage = async (message) => {
-      const data = JSON.parse(message.data);
-      switch (data.type) {
-        case "offer":
-          await this.connection.setRemoteDescription(
-            new RTCSessionDescription(data.offer),
-          );
-          const answer = await this.connection.createAnswer();
-          await this.connection.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: "answer", answer }));
-          break;
-        case "answer":
-          await this.connection.setRemoteDescription(
-            new RTCSessionDescription(data.answer),
-          );
-          break;
-        case "ice-candidate":
-          await this.connection.addIceCandidate(
-            new RTCIceCandidate(data.candidate),
-          );
-          break;
-      }
-    };
-
-    if (this.signal_server.makes_first_move) {
-      this.connection.createOffer().then(async (offer) => {
-        await this.connection.setLocalDescription(offer);
-        ws.send(JSON.stringify({ type: "offer", offer }));
-      });
     }
 
     this.connection.onconnectionstatechange = () => {
@@ -131,6 +90,60 @@ export class FastPeerConnection {
           break;
       }
     };
+  }
+
+  connect_with_webSockets(ws: WebSocket) {
+    this.connection.onicecandidate = (event) => {
+      if (event.candidate) {
+        ws.send(
+          JSON.stringify({ type: "ice-candidate", candidate: event.candidate }),
+        );
+      }
+    };
+
+    ws.onmessage = async (message) => {
+      const data = JSON.parse(message.data);
+      switch (data.type) {
+        case "offer":
+          await this.connection.setRemoteDescription(
+            new RTCSessionDescription(data.offer),
+          );
+          const answer = await this.connection.createAnswer();
+          await this.connection.setLocalDescription(answer);
+          ws.send(JSON.stringify({ type: "answer", answer }));
+          ws.close();
+          break;
+        case "answer":
+          await this.connection.setRemoteDescription(
+            new RTCSessionDescription(data.answer),
+          );
+          ws.close();
+          break;
+        case "ice-candidate":
+          await this.connection.addIceCandidate(
+            new RTCIceCandidate(data.candidate),
+          );
+          break;
+      }
+    };
+  }
+
+  send_webSocket_offer(ws: WebSocket) {
+    this.connection.createOffer().then(async (offer) => {
+      await this.connection.setLocalDescription(offer);
+      ws.send(JSON.stringify({ type: "offer", offer }));
+    });
+  }
+
+  createDataChannel(label: string) {
+    const data_channel = this.connection.createDataChannel(label);
+    this.data_channels.push(data_channel);
+    data_channel.onopen = () => {
+      this.listen(data_channel, (message) => {
+        console.log(message);
+      });
+    };
+    return data_channel;
   }
 
   /**
@@ -184,11 +197,13 @@ export class FastPeerConnection {
    * If you want to receive every message sent over this channel,
    * register the listener before updating the {@link peer_signal_state}.
    */
-  listen(listener: (message: string) => void): void {
-    this.data_channel.addEventListener("message", (event) => {
+  listen(
+    data_channel: RTCDataChannel,
+    listener: (message: string) => void,
+  ): void {
+    data_channel.addEventListener("message", (event) => {
       listener(event.data);
     });
-    this.data_channel.send("sending through data channel");
   }
 
   /**
@@ -197,12 +212,12 @@ export class FastPeerConnection {
    */
   send(data: string): void {
     if (
-      this.data_channel === undefined ||
-      this.data_channel.readyState !== "open"
+      this.data_channels[0] === undefined ||
+      this.data_channels[0].readyState !== "open"
     ) {
       this.message_queue.push(data);
     } else {
-      this.data_channel.send(data);
+      this.data_channels[0].send(data);
     }
   }
 
