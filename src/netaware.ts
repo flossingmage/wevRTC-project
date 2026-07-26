@@ -62,12 +62,7 @@ export class FastPeerConnection {
       });
     } else {
       this.connection.ondatachannel = (event) => {
-        console.log("getting data channel");
-        const data_channel = event.channel;
-        this.data_channels.push(data_channel);
-        this.listen(data_channel, (message) => {
-          console.log(message);
-        });
+        this.addDataChannel(event);
         while (this.message_queue.length > 0) {
           this.send(String(this.message_queue.shift()));
         }
@@ -95,9 +90,13 @@ export class FastPeerConnection {
   connect_with_webSockets(ws: WebSocket) {
     this.connection.onicecandidate = (event) => {
       if (event.candidate) {
-        ws.send(
-          JSON.stringify({ type: "ice-candidate", candidate: event.candidate }),
-        );
+        if (ws.readyState === ws.OPEN)
+          ws.send(
+            JSON.stringify({
+              type: "ice-candidate",
+              candidate: event.candidate,
+            }),
+          );
       }
     };
 
@@ -144,6 +143,25 @@ export class FastPeerConnection {
       });
     };
     return data_channel;
+  }
+
+  getDataChannel(label: string) {
+    for (const channel of this.data_channels.values()) {
+      if (channel.label === label) return channel;
+    }
+    return null;
+  }
+
+  addDataChannel(event: RTCDataChannelEvent) {
+    const data_channel = event.channel;
+    this.data_channels.push(data_channel);
+    this.listen(data_channel, (message) => {
+      console.log(message);
+    });
+  }
+
+  getConnection() {
+    return this.connection;
   }
 
   /**

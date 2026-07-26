@@ -33,7 +33,57 @@ export const connect = async (isHost: boolean) => {
 
   await connection.on_ready();
 
-  // if (isHost) connection.createDataChannel("messages");
-
   connection.send("hello from the other side");
+
+  connection.getConnection().addEventListener("datachannel", (event) => {
+    if (event.channel.label === "mouse") {
+      const OMouse = set_up_mouse(event.channel);
+      connection.listen(event.channel, (message) => {
+        const data = JSON.parse(message);
+        move_mouse(data.x, data.y, OMouse);
+      });
+    }
+  });
+
+  if (isHost) {
+    console.log("making mouse channel");
+    const mouseChannel = connection.createDataChannel("mouse");
+    mouseChannel.addEventListener("open", () => {
+      const OMouse = set_up_mouse(mouseChannel);
+      connection.listen(mouseChannel, (message) => {
+        const data = JSON.parse(message);
+        move_mouse(data.x, data.y, OMouse);
+      });
+    });
+  }
 };
+
+function move_mouse(x: number, y: number, element: HTMLElement) {
+  console.log("moving mouse");
+  element.style.left = `${x}px`;
+  element.style.top = `${y}px`;
+}
+
+function set_up_mouse(mouseChannel: RTCDataChannel) {
+  const OMouse = document.createElement("div");
+
+  OMouse.style.position = "fixed";
+  OMouse.style.width = "10px";
+  OMouse.style.height = "10px";
+  OMouse.style.backgroundColor = "green";
+
+  document.body.appendChild(OMouse);
+
+  mouseChannel.addEventListener("message", (event) => {
+    console.log("getting mouse");
+    const data = JSON.parse(event.data);
+    move_mouse(data.x, data.y, OMouse);
+  });
+
+  window.addEventListener("mousemove", (event: MouseEvent) => {
+    const x = event.clientX;
+    const y = event.clientY;
+    mouseChannel.send(JSON.stringify({ x, y }));
+  });
+  return OMouse;
+}
