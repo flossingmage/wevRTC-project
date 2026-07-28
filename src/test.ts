@@ -20,10 +20,12 @@ export const connect = async (isHost: boolean) => {
   const timeout_ms = 1000;
 
   const connection = new FastPeerConnection(signal_server, timeout_ms);
+
   // add media
   const constraints = { video: true, audio: true };
 
   connection.addMediaStream(constraints);
+
   // continue connection
   connection.connect_with_webSockets(ws);
 

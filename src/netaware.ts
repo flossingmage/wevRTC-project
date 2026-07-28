@@ -63,10 +63,18 @@ export class FastPeerConnection {
     } else {
       this.connection.ondatachannel = (event) => {
         this.addDataChannel(event);
+      };
+
+      const listener = (event: RTCDataChannelEvent) => {
+        if (event.channel.label !== "message") return;
+
         while (this.message_queue.length > 0) {
           this.send(String(this.message_queue.shift()), "message");
         }
+
+        this.connection.removeEventListener("datachannel", listener);
       };
+      this.connection.addEventListener("datachannel", listener);
     }
 
     this.connection.onconnectionstatechange = () => {
@@ -170,10 +178,11 @@ export class FastPeerConnection {
     });
   }
 
-  getConnection() {
-    return this.connection;
-  }
-
+  /**
+   * establishes media stream between peers.
+   * puts videos in HTMLVideoElements with the id=localVideo and id=remoteVideo if they exist
+   * @param constraints
+   */
   async addMediaStream(constraints: MediaStreamConstraints) {
     const localStream = await navigator.mediaDevices.getUserMedia(constraints);
     localStream.getTracks().forEach((track) => {
@@ -181,14 +190,14 @@ export class FastPeerConnection {
     });
 
     const localVideo = document.querySelector<HTMLVideoElement>("#localVideo");
-    localVideo!.srcObject = localStream;
+    if (localVideo) localVideo.srcObject = localStream;
 
     this.connection.addEventListener("track", async (event) => {
       console.log("getting other track");
       const [remoteStream] = event.streams;
       const remoteVideo =
-        document.querySelector<HTMLVideoElement>("#remoteVideo")!;
-      remoteVideo.srcObject = remoteStream;
+        document.querySelector<HTMLVideoElement>("#remoteVideo");
+      if (remoteVideo) remoteVideo.srcObject = remoteStream;
     });
   }
 
@@ -261,7 +270,7 @@ export class FastPeerConnection {
       !this.data_channels.get(label) ||
       this.data_channels.get(label)!.readyState !== "open"
     ) {
-      this.message_queue.push(data);
+      if (label === "message") this.message_queue.push(data);
     } else {
       this.data_channels.get(label)!.send(data);
     }
