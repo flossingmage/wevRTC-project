@@ -33,17 +33,7 @@ export const connect = async (isHost: boolean) => {
 
   await connection.on_ready();
 
-  connection.send("hello from the other side");
-
-  connection.getConnection().addEventListener("datachannel", (event) => {
-    if (event.channel.label === "mouse") {
-      const OMouse = set_up_mouse(event.channel);
-      connection.listen(event.channel, (message) => {
-        const data = JSON.parse(message);
-        move_mouse(data.x, data.y, OMouse);
-      });
-    }
-  });
+  connection.send("hello from the other side", "message");
 
   if (isHost) {
     console.log("making mouse channel");
@@ -54,6 +44,13 @@ export const connect = async (isHost: boolean) => {
         const data = JSON.parse(message);
         move_mouse(data.x, data.y, OMouse);
       });
+    });
+  } else {
+    const mouseChannel = await connection.getDataChannel("mouse");
+    const OMouse = set_up_mouse(mouseChannel);
+    connection.listen(mouseChannel, (message) => {
+      const data = JSON.parse(message);
+      move_mouse(data.x, data.y, OMouse);
     });
   }
 };

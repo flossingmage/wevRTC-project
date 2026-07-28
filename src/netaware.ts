@@ -36,7 +36,7 @@ export class FastPeerConnection {
   private readonly timeout_ms: number;
   private readonly message_queue: string[];
   private readonly connection: RTCPeerConnection;
-  private data_channels: RTCDataChannel[];
+  private data_channels: Map<string, RTCDataChannel>;
 
   /**
    * Make a {@link FastPeerConnection} with a {@link signal_server} and {@link timeout_ms}.
@@ -46,7 +46,7 @@ export class FastPeerConnection {
     this.signal_server = signal_server;
     this.timeout_ms = timeout_ms;
     this.message_queue = [];
-    this.data_channels = [];
+    this.data_channels = new Map<string, RTCDataChannel>();
 
     const config = {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
@@ -57,14 +57,14 @@ export class FastPeerConnection {
       const data_channel = this.createDataChannel("message");
       data_channel.addEventListener("open", () => {
         while (this.message_queue.length > 0) {
-          this.send(String(this.message_queue.shift()));
+          this.send(String(this.message_queue.shift()), "message");
         }
       });
     } else {
       this.connection.ondatachannel = (event) => {
         this.addDataChannel(event);
         while (this.message_queue.length > 0) {
-          this.send(String(this.message_queue.shift()));
+          this.send(String(this.message_queue.shift()), "message");
         }
       };
     }
@@ -136,7 +136,7 @@ export class FastPeerConnection {
 
   createDataChannel(label: string) {
     const data_channel = this.connection.createDataChannel(label);
-    this.data_channels.push(data_channel);
+    this.data_channels.set(data_channel.label, data_channel);
     data_channel.onopen = () => {
       this.listen(data_channel, (message) => {
         console.log(message);
@@ -145,16 +145,26 @@ export class FastPeerConnection {
     return data_channel;
   }
 
-  getDataChannel(label: string) {
-    for (const channel of this.data_channels.values()) {
-      if (channel.label === label) return channel;
-    }
-    return null;
+  getDataChannel(label: string): Promise<RTCDataChannel> {
+    const data_channel = this.data_channels.get(label);
+    if (data_channel) return Promise.resolve(data_channel);
+
+    return new Promise((resolve) => {
+      const listener = (event: RTCDataChannelEvent) => {
+        const data_channel = event.channel;
+        if (data_channel.label !== label) return;
+
+        this.data_channels.set(label, data_channel);
+        this.connection.removeEventListener("datachannel", listener);
+        resolve(data_channel);
+      };
+      this.connection.addEventListener("datachannel", listener);
+    });
   }
 
   addDataChannel(event: RTCDataChannelEvent) {
     const data_channel = event.channel;
-    this.data_channels.push(data_channel);
+    this.data_channels.set(data_channel.label, data_channel);
     this.listen(data_channel, (message) => {
       console.log(message);
     });
@@ -228,14 +238,14 @@ export class FastPeerConnection {
    * Send data over the WebRTC channel. Messages should be enqueued if a
    * connection has not been established.
    */
-  send(data: string): void {
+  send(data: string, label: string): void {
     if (
-      this.data_channels[0] === undefined ||
-      this.data_channels[0].readyState !== "open"
+      !this.data_channels.get(label) ||
+      this.data_channels.get(label)!.readyState !== "open"
     ) {
       this.message_queue.push(data);
     } else {
-      this.data_channels[0].send(data);
+      this.data_channels.get(label)!.send(data);
     }
   }
 
