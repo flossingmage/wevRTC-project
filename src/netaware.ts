@@ -174,6 +174,24 @@ export class FastPeerConnection {
     return this.connection;
   }
 
+  async addMediaStream(constraints: MediaStreamConstraints) {
+    const localStream = await navigator.mediaDevices.getUserMedia(constraints);
+    localStream.getTracks().forEach((track) => {
+      this.connection.addTrack(track, localStream);
+    });
+
+    const localVideo = document.querySelector<HTMLVideoElement>("#localVideo");
+    localVideo!.srcObject = localStream;
+
+    this.connection.addEventListener("track", async (event) => {
+      console.log("getting other track");
+      const [remoteStream] = event.streams;
+      const remoteVideo =
+        document.querySelector<HTMLVideoElement>("#remoteVideo")!;
+      remoteVideo.srcObject = remoteStream;
+    });
+  }
+
   /**
    * Called by the third-party signaling mechanism
    * whenever a state update is propogated from the

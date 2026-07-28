@@ -20,6 +20,11 @@ export const connect = async (isHost: boolean) => {
   const timeout_ms = 1000;
 
   const connection = new FastPeerConnection(signal_server, timeout_ms);
+  // add media
+  const constraints = { video: true, audio: true };
+
+  connection.addMediaStream(constraints);
+  // continue connection
   connection.connect_with_webSockets(ws);
 
   if (isHost) {
@@ -34,6 +39,8 @@ export const connect = async (isHost: boolean) => {
   await connection.on_ready();
 
   connection.send("hello from the other side", "message");
+
+  // add moving mouse
 
   if (isHost) {
     console.log("making mouse channel");
