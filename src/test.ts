@@ -1,12 +1,12 @@
 import { FastPeerConnection, type SignalServer } from "./netaware";
 
-const ws = new WebSocket("ws://localhost:8080");
-
-ws.addEventListener("open", () => {
-  console.log("Connected to the server.");
-});
-
 export const connect = async (isHost: boolean) => {
+  const ws = new WebSocket("ws://localhost:8080");
+
+  ws.addEventListener("open", () => {
+    console.log("Connected to the server.");
+  });
+
   console.log("Connecting as", isHost ? "host" : "client");
   const signal_server: SignalServer = {
     makes_first_move: isHost,
@@ -18,8 +18,8 @@ export const connect = async (isHost: boolean) => {
     },
   };
   const timeout_ms = 1000;
-
-  const connection = new FastPeerConnection(signal_server, timeout_ms);
+  let connection = null;
+  connection = new FastPeerConnection(signal_server, timeout_ms);
 
   // add media
   const constraints = { video: true, audio: true };
@@ -89,7 +89,8 @@ function set_up_mouse(mouseChannel: RTCDataChannel) {
   window.addEventListener("mousemove", (event: MouseEvent) => {
     const x = event.clientX;
     const y = event.clientY;
-    mouseChannel.send(JSON.stringify({ x, y }));
+    if (mouseChannel.readyState === "open")
+      mouseChannel.send(JSON.stringify({ x, y }));
   });
   return OMouse;
 }

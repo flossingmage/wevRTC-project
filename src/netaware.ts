@@ -33,7 +33,7 @@ export type SignalServer = {
  */
 export class FastPeerConnection {
   private readonly signal_server: SignalServer;
-  private readonly timeout_ms: number;
+  // private readonly timeout_ms: number;
   private readonly message_queue: string[];
   private readonly connection: RTCPeerConnection;
   private data_channels: Map<string, RTCDataChannel>;
@@ -44,7 +44,7 @@ export class FastPeerConnection {
    */
   constructor(signal_server: SignalServer, timeout_ms: number) {
     this.signal_server = signal_server;
-    this.timeout_ms = timeout_ms;
+    // this.timeout_ms = timeout_ms;
     this.message_queue = [];
     this.data_channels = new Map<string, RTCDataChannel>();
 
@@ -84,12 +84,14 @@ export class FastPeerConnection {
           break;
         case "disconnected":
           console.log("Connection disconnected");
+          this.close();
           break;
         case "failed":
           console.log("Connection failed");
           break;
         case "closed":
           console.log("Connection closed");
+          this.close();
           break;
       }
     };
@@ -206,7 +208,7 @@ export class FastPeerConnection {
    * whenever a state update is propogated from the
    * other end of the peer connection.
    */
-  async set_peer_signal_state(state: string): Promise<void> {}
+  // async set_peer_signal_state(state: string): Promise<void> {}
 
   /**
    * Returns a promise that is fullfilled if a connection succesfully
@@ -279,5 +281,32 @@ export class FastPeerConnection {
   /**
    * Gracefully shut down and clean up this end of the peer connection.
    */
-  close(): void {}
+  close(): void {
+    if (!this.connection) return;
+
+    // close media
+    this.connection.getSenders().forEach((sender) => sender.track?.stop());
+
+    const localVideo = document.querySelector<HTMLVideoElement>("#localVideo");
+    if (localVideo) localVideo.srcObject = null;
+
+    const remoteVideo =
+      document.querySelector<HTMLVideoElement>("#remoteVideo");
+    if (remoteVideo) remoteVideo.srcObject = null;
+
+    // close data channels
+    for (const channel of this.data_channels.values()) {
+      channel.close();
+    }
+    this.data_channels.clear();
+
+    // close on something
+    this.connection.onconnectionstatechange = null;
+    this.connection.ondatachannel = null;
+    this.connection.onicecandidate = null;
+    this.connection.ontrack = null;
+
+    //close connection
+    this.connection.close();
+  }
 }
