@@ -30,6 +30,10 @@ export const connect = async (isHost: boolean) => {
   connection.connect_with_webSockets(ws);
 
   if (isHost) {
+    document.querySelectorAll("button").forEach((btn) => {
+      if (btn.textContent === "start Connection") btn.remove();
+    });
+
     const startButten = document.createElement("button") as HTMLButtonElement;
     startButten.textContent = "start Connection";
     startButten.addEventListener("click", () => {
