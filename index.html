@@ -7,20 +7,22 @@
 </head>
 <body>
     <button id="startBtn">Start</button>
+    <input type="text" id="roomId" placeholder="Type room id here...">
     <button id="joinBtn">Join</button>
+    <div id="text">the code didn't run</div>
 
-    <video id="localVideo" width="320" hight="420" autoplay muted></video>
-    <video id="remoteVideo" width="320" hight="420" autoplay></video>
+    <video id="localVideo" width="320" hight="420" autoplay muted playsinline></video>
+    <video id="remoteVideo" width="320" hight="420" autoplay playsinline></video>
 
     <script type="module">
-        import { connect } from "./src/test";
+        import { host_room ,  join_room } from "./src/testFireBase";
 
         document.getElementById("startBtn").addEventListener("click", () => {
-            connect(true);
+            host_room();
         });
 
         document.getElementById("joinBtn").addEventListener("click", () => {
-            connect(false);
+            join_room();
         });
     </script>
 </body>

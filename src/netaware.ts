@@ -1,3 +1,6 @@
+import { db } from "./firebase.ts";
+import { ref, push, set, onValue, child } from "firebase/database";
+
 export type SignalServer = {
   /**
    * Which end of the connection initiates, i.e. makes the first move.
@@ -51,6 +54,7 @@ export class FastPeerConnection {
     const config = {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     };
+
     this.connection = new RTCPeerConnection(config);
 
     if (this.signal_server.makes_first_move) {
@@ -95,6 +99,68 @@ export class FastPeerConnection {
           break;
       }
     };
+  }
+
+  host_with_firebase(roomId: string) {
+    const roomRef = ref(db, `rooms/${roomId}`);
+
+    this.connection.onicecandidate = (event) => {
+      if (event.candidate)
+        push(child(roomRef, "offerCandidates"), event.candidate.toJSON());
+    };
+
+    this.connection.createOffer().then(async (offer) => {
+      await this.connection.setLocalDescription(offer);
+      await set(child(roomRef, "offer"), {
+        sdp: offer.sdp,
+        type: offer.type,
+      });
+    });
+
+    onValue(child(roomRef, "answer"), async (snapshot) => {
+      const answer = snapshot.val();
+      if (answer && !this.connection.currentRemoteDescription) {
+        await this.connection.setRemoteDescription(
+          new RTCSessionDescription(answer),
+        );
+      }
+    });
+
+    onValue(child(roomRef, "answerCandidates"), (snapshot) => {
+      snapshot.forEach((candidate) => {
+        this.connection.addIceCandidate(new RTCIceCandidate(candidate.val()));
+      });
+    });
+  }
+
+  join_with_firebase(roomId: string) {
+    const roomRef = ref(db, `rooms/${roomId}`);
+
+    this.connection.onicecandidate = (event) => {
+      if (event.candidate)
+        push(child(roomRef, "answerCandidates"), event.candidate.toJSON());
+    };
+
+    onValue(child(roomRef, "offer"), async (snapshot) => {
+      const offer = snapshot.val();
+      if (offer && !this.connection.currentRemoteDescription) {
+        await this.connection.setRemoteDescription(
+          new RTCSessionDescription(offer),
+        );
+        const answer = await this.connection.createAnswer();
+        await this.connection.setLocalDescription(answer);
+        await set(child(roomRef, "answer"), {
+          sdp: answer.sdp,
+          type: answer.type,
+        });
+      }
+    });
+
+    onValue(child(roomRef, "offerCandidates"), (snapshot) => {
+      snapshot.forEach((candidate) => {
+        this.connection.addIceCandidate(new RTCIceCandidate(candidate.val()));
+      });
+    });
   }
 
   connect_with_webSockets(ws: WebSocket) {
