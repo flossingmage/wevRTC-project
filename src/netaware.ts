@@ -269,6 +269,30 @@ export class FastPeerConnection {
     });
   }
 
+  async share_screen() {
+    const screenStream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+    });
+
+    const videoTrack = screenStream.getVideoTracks()[0];
+
+    const sender = this.connection.getSenders();
+    const videoSender = sender.find(
+      (sender) => sender.track && sender.track.kind === "video",
+    );
+
+    if (videoSender) {
+      await videoSender.replaceTrack(videoTrack);
+    } else {
+      this.connection.addTrack(videoTrack, screenStream);
+    }
+
+    videoTrack.onended = () => {
+      this.stop_Screen_Share();
+    };
+  }
+
+  stop_Screen_Share() {}
   /**
    * Called by the third-party signaling mechanism
    * whenever a state update is propogated from the

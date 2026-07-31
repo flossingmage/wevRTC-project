@@ -2,6 +2,8 @@ import { FastPeerConnection, type SignalServer } from "./netaware";
 
 document.getElementById("text")!.innerHTML = "code ran";
 
+let connection: FastPeerConnection | null = null;
+
 export const host_room = async () => {
   const signal_server: SignalServer = {
     makes_first_move: true,
@@ -13,7 +15,7 @@ export const host_room = async () => {
     },
   };
 
-  const connection = new FastPeerConnection(signal_server, 1000);
+  connection = new FastPeerConnection(signal_server, 1000);
 
   const constraints = { video: true, audio: true };
 
@@ -46,7 +48,7 @@ export const join_room = async () => {
     },
   };
 
-  const connection = new FastPeerConnection(signal_server, 1000);
+  connection = new FastPeerConnection(signal_server, 1000);
 
   const constraints = { video: true, audio: true };
 
@@ -59,4 +61,8 @@ export const join_room = async () => {
   await connection.on_ready();
 
   connection.send("hello from the other side", "message");
+};
+
+export const share_screen = () => {
+  connection?.share_screen();
 };

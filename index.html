@@ -10,12 +10,11 @@
     <input type="text" id="roomId" placeholder="Type room id here...">
     <button id="joinBtn">Join</button>
     <div id="text">the code didn't run</div>
-
-    <video id="localVideo" width="320" hight="420" autoplay muted playsinline></video>
-    <video id="remoteVideo" width="320" hight="420" autoplay playsinline></video>
-
+    <button id="shareScreen">share screen</button>
+    <video id="localVideo" width="320" height="420" autoplay muted playsinline></video>
+    <video id="remoteVideo" width="320" height="420" autoplay playsinline></video>
     <script type="module">
-        import { host_room ,  join_room } from "./src/testFireBase";
+        import { host_room ,  join_room, share_screen } from "./src/testFireBase";
 
         document.getElementById("startBtn").addEventListener("click", () => {
             host_room();
@@ -23,6 +22,10 @@
 
         document.getElementById("joinBtn").addEventListener("click", () => {
             join_room();
+        });
+
+        document.getElementById("shareScreen").addEventListener("click", () => {
+            share_screen();
         });
     </script>
 </body>
