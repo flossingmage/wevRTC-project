@@ -101,8 +101,8 @@ export class FastPeerConnection {
     };
   }
 
-  host_with_firebase(roomId: string) {
-    const roomRef = ref(db, `rooms/${roomId}`);
+  host_with_firebase(roomId: string, connectionId: string) {
+    const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
 
     this.connection.onicecandidate = (event) => {
       if (event.candidate)
@@ -133,8 +133,8 @@ export class FastPeerConnection {
     });
   }
 
-  join_with_firebase(roomId: string) {
-    const roomRef = ref(db, `rooms/${roomId}`);
+  join_with_firebase(roomId: string, connectionId: string) {
+    const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
 
     this.connection.onicecandidate = (event) => {
       if (event.candidate)
@@ -251,21 +251,18 @@ export class FastPeerConnection {
    * puts videos in HTMLVideoElements with the id=localVideo and id=remoteVideo if they exist
    * @param constraints
    */
-  async addMediaStream(constraints: MediaStreamConstraints) {
+  async addMediaStream(
+    constraints: MediaStreamConstraints,
+    onRemoteStream?: (stream: MediaStream) => void,
+  ) {
     const localStream = await navigator.mediaDevices.getUserMedia(constraints);
     localStream.getTracks().forEach((track) => {
       this.connection.addTrack(track, localStream);
     });
 
-    const localVideo = document.querySelector<HTMLVideoElement>("#localVideo");
-    if (localVideo) localVideo.srcObject = localStream;
-
-    this.connection.addEventListener("track", async (event) => {
-      console.log("getting other track");
+    this.connection.addEventListener("track", (event) => {
       const [remoteStream] = event.streams;
-      const remoteVideo =
-        document.querySelector<HTMLVideoElement>("#remoteVideo");
-      if (remoteVideo) remoteVideo.srcObject = remoteStream;
+      onRemoteStream?.(remoteStream);
     });
   }
 

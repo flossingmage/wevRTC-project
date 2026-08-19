@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Call Room</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #0f172a;
+        color: #f1f5f9;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 16px 24px;
+        background: rgba(255, 255, 255, 0.04);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .room-info {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .room-info .label {
+        font-size: 0.75rem;
+        color: #94a3b8;
+      }
+
+      .room-info .code {
+        font-weight: 700;
+        letter-spacing: 3px;
+        color: #a78bfa;
+        font-size: 1rem;
+      }
+
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.85rem;
+        color: #94a3b8;
+      }
+
+      .status-dot {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: #f59e0b;
+      }
+
+      .status-dot.connected {
+        background: #22c55e;
+      }
+      .status-dot.disconnected {
+        background: #ef4444;
+      }
+
+      main {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+        padding: 20px;
+        overflow: hidden;
+      }
+
+      @media (max-width: 700px) {
+        main {
+          grid-template-columns: 1fr;
+          grid-template-rows: 1fr 1fr;
+        }
+      }
+
+      .video-tile {
+        position: relative;
+        background: #000;
+        border-radius: 14px;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .video-tile video {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .video-tile .tag {
+        position: absolute;
+        bottom: 10px;
+        left: 12px;
+        background: rgba(0, 0, 0, 0.55);
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-size: 0.8rem;
+      }
+
+      .video-tile .placeholder {
+        color: #475569;
+        font-size: 0.9rem;
+        text-align: center;
+        padding: 20px;
+      }
+
+      footer {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 16px;
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.04);
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .control-btn {
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(255, 255, 255, 0.08);
+        color: #f1f5f9;
+        font-size: 1.2rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition:
+          transform 0.15s ease,
+          background 0.15s ease;
+      }
+
+      .control-btn:hover {
+        transform: translateY(-2px);
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .control-btn.active-off {
+        background: #ef4444;
+      }
+
+      .control-btn.hang-up {
+        background: #ef4444;
+        width: 64px;
+      }
+
+      .control-btn.hang-up:hover {
+        background: #dc2626;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="room-info">
+        <span class="label">ROOM CODE</span>
+        <span class="code" id="room-code-display">------</span>
+      </div>
+      <div class="status">
+        <span class="status-dot" id="status-dot"></span>
+        <span id="status-text">Connecting...</span>
+      </div>
+    </header>
+
+    <main>
+      <div class="video-tile" id="local-tile">
+        <video id="local-video" autoplay playsinline muted></video>
+        <div class="placeholder" id="local-placeholder">
+          Waiting for camera...
+        </div>
+        <span class="tag">You</span>
+      </div>
+      <div class="video-tile" id="remote-tile">
+        <video id="remote-video" autoplay playsinline></video>
+        <div class="placeholder" id="remote-placeholder">
+          Waiting for the other player to join...
+        </div>
+        <span class="tag">Peer</span>
+      </div>
+      <div class="video-tile" id="remote-tile">
+        <video id="remote-video" autoplay playsinline></video>
+        <div class="placeholder" id="remote-placeholder">
+          Waiting for the other player to join...
+        </div>
+        <span class="tag">Peer</span>
+      </div>
+    </main>
+
+    <footer>
+      <button class="control-btn" id="mic-btn" title="Toggle microphone">
+        🎤
+      </button>
+      <button class="control-btn" id="cam-btn" title="Toggle camera">📷</button>
+      <button class="control-btn hang-up" id="hangup-btn" title="Leave call">
+        📞
+      </button>
+    </footer>
+
+    <script type="module">
+      import {
+        register_ui_hooks,
+        begin_connection,
+        toggle_mic,
+        toggle_camera,
+        leave_call,
+      } from "./src/testFireBase.js";
+
+      const params = new URLSearchParams(window.location.search);
+      document.getElementById("room-code-display").textContent =
+        params.get("code") ?? "------";
+
+      const localVideo = document.getElementById("local-video");
+      const localPlaceholder = document.getElementById("local-placeholder");
+      const remoteVideo = document.getElementById("remote-video");
+      const remotePlaceholder = document.getElementById("remote-placeholder");
+      const statusDot = document.getElementById("status-dot");
+      const statusText = document.getElementById("status-text");
+      const micBtn = document.getElementById("mic-btn");
+      const camBtn = document.getElementById("cam-btn");
+      const hangupBtn = document.getElementById("hangup-btn");
+
+      let micOn = true;
+      let camOn = true;
+
+      register_ui_hooks({
+        onLocalStream: (stream) => {
+          localVideo.srcObject = stream;
+          localPlaceholder.style.display = "none";
+        },
+        onRemoteStream: (_peerUserId, stream) => {
+          remoteVideo.srcObject = stream;
+          remotePlaceholder.style.display = "none";
+        },
+        onStatusChange: (status) => {
+          statusDot.className = "status-dot " + status;
+          statusText.textContent =
+            status === "connected"
+              ? "Connected"
+              : status === "connecting"
+                ? "Connecting..."
+                : "Disconnected";
+        },
+      });
+
+      micBtn.addEventListener("click", () => {
+        micOn = !micOn;
+        toggle_mic(micOn);
+        micBtn.classList.toggle("active-off", !micOn);
+      });
+
+      camBtn.addEventListener("click", () => {
+        camOn = !camOn;
+        toggle_camera(camOn);
+        camBtn.classList.toggle("active-off", !camOn);
+      });
+
+      hangupBtn.addEventListener("click", async () => {
+        await leave_call();
+        window.location.href = "/";
+      });
+
+      begin_connection().catch((err) => {
+        console.error("Failed to join call:", err);
+        statusText.textContent = "Failed to connect";
+        statusDot.className = "status-dot disconnected";
+      });
+    </script>
+  </body>
+</html>

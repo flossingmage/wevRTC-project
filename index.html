@@ -1,32 +1,291 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HomePage</title>
-</head>
-<body>
-    <button id="startBtn">Start</button>
-    <input type="text" id="roomId" placeholder="Type room id here...">
-    <button id="joinBtn">Join</button>
-    <div id="text">the code didn't run</div>
-    <button id="shareScreen">share screen</button>
-    <video id="localVideo" width="320" height="420" autoplay muted playsinline></video>
-    <video id="remoteVideo" width="320" height="420" autoplay playsinline></video>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Game Lobby</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: linear-gradient(135deg, #1e1b4b, #0f172a);
+        color: #f1f5f9;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .card {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 40px;
+        width: 360px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+      }
+
+      h1 {
+        font-size: 1.8rem;
+        margin-bottom: 8px;
+      }
+
+      .subtitle {
+        color: #94a3b8;
+        margin-bottom: 32px;
+        font-size: 0.95rem;
+      }
+
+      .choice-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+
+      button {
+        font-size: 1rem;
+        font-weight: 600;
+        padding: 14px;
+        border-radius: 10px;
+        border: none;
+        cursor: pointer;
+        transition:
+          transform 0.15s ease,
+          box-shadow 0.15s ease;
+      }
+
+      button:hover {
+        transform: translateY(-2px);
+      }
+
+      .btn-host {
+        background: linear-gradient(135deg, #6366f1, #8b5cf6);
+        color: white;
+        box-shadow: 0 4px 20px rgba(99, 102, 241, 0.4);
+      }
+
+      .btn-join {
+        background: rgba(255, 255, 255, 0.08);
+        color: #f1f5f9;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+      }
+
+      .btn-back {
+        background: transparent;
+        color: #94a3b8;
+        font-size: 0.85rem;
+        padding: 8px;
+        margin-top: 12px;
+      }
+
+      .btn-back:hover {
+        color: #f1f5f9;
+        transform: none;
+      }
+
+      .hidden {
+        display: none;
+      }
+
+      input[type="text"] {
+        width: 100%;
+        padding: 14px;
+        font-size: 1.2rem;
+        letter-spacing: 4px;
+        text-align: center;
+        text-transform: uppercase;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(0, 0, 0, 0.25);
+        color: #f1f5f9;
+        margin-bottom: 16px;
+      }
+
+      input[type="text"]:focus {
+        outline: none;
+        border-color: #8b5cf6;
+      }
+
+      input[type="text"]::placeholder {
+        letter-spacing: normal;
+        color: #64748b;
+      }
+
+      .error {
+        color: #f87171;
+        font-size: 0.85rem;
+        height: 18px;
+        margin-top: -8px;
+        margin-bottom: 12px;
+      }
+
+      .host-code-display {
+        background: rgba(0, 0, 0, 0.25);
+        border-radius: 10px;
+        padding: 20px;
+        margin-bottom: 20px;
+      }
+
+      .host-code-display .label {
+        font-size: 0.8rem;
+        color: #94a3b8;
+        margin-bottom: 8px;
+      }
+
+      .host-code-display .code {
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: 6px;
+        color: #a78bfa;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <div id="screen-choice">
+        <h1>Game Lobby</h1>
+        <p class="subtitle">Start a new game or join a friend</p>
+        <div class="choice-buttons">
+          <button class="btn-host" onclick="showScreen('host')">
+            Host Game
+          </button>
+          <button class="btn-join" onclick="showScreen('join')">
+            Join Game
+          </button>
+        </div>
+      </div>
+
+      <div id="screen-host" class="hidden">
+        <h1>Hosting</h1>
+        <p class="subtitle">Share this code with your friend</p>
+        <div class="host-code-display">
+          <div class="label">ROOM CODE</div>
+          <div class="code" id="generated-code">------</div>
+        </div>
+        <button class="btn-host" onclick="startHosting()">Start Game</button>
+        <button class="btn-back" onclick="showScreen('choice')">
+          &larr; Back
+        </button>
+      </div>
+
+      <div id="screen-join" class="hidden">
+        <h1>Join Game</h1>
+        <p class="subtitle">Enter the room code</p>
+        <input
+          type="text"
+          id="join-code-input"
+          placeholder="ABC123"
+          maxlength="6"
+          autocomplete="off"
+        />
+        <div class="error" id="join-error"></div>
+        <button
+          class="btn-join"
+          style="
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+          "
+          onclick="submitJoinCode()"
+        >
+          Join
+        </button>
+        <button class="btn-back" onclick="showScreen('choice')">
+          &larr; Back
+        </button>
+      </div>
+    </div>
+
     <script type="module">
-        import { host_room ,  join_room, share_screen } from "./src/testFireBase";
+       import {db} from "./src/firebase"
+       import {ref, child, get} from "firebase/database"
 
-        document.getElementById("startBtn").addEventListener("click", () => {
-            host_room();
-        });
+      async function showScreen(name) {
+        document.getElementById("screen-choice").classList.add("hidden");
+        document.getElementById("screen-host").classList.add("hidden");
+        document.getElementById("screen-join").classList.add("hidden");
+        document.getElementById("screen-" + name).classList.remove("hidden");
 
-        document.getElementById("joinBtn").addEventListener("click", () => {
-            join_room();
-        });
+        if (name === "host") {
+          document.getElementById("generated-code").textContent =
+            await generateRoomCode();
+        }
+        if (name === "join") {
+          document.getElementById("join-code-input").value = "";
+          document.getElementById("join-error").textContent = "";
+          setTimeout(
+            () => document.getElementById("join-code-input").focus(),
+            50,
+          );
+        }
+      }
 
-        document.getElementById("shareScreen").addEventListener("click", () => {
-            share_screen();
-        });
+      async function room_exists(code) {
+        const room_ref = await get(ref(db, `rooms/${code}`));
+          if (room_ref.exists()){
+           return true;
+          }
+          return false;
+      }
+
+      async function generateRoomCode() {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let code = "";
+        for (let i = 0; i < 6; i++) {
+          code += chars[Math.floor(Math.random() * chars.length)];
+        }
+
+          if (await room_exists(code)){
+           return await generateRoomCode();
+          }
+        return code;
+      }
+
+      function startHosting() {
+        const code = document.getElementById("generated-code").textContent;
+        window.location.href =
+          "waiting-room.html?code=" + encodeURIComponent(code) + "&role=host";
+      }
+
+      async function submitJoinCode() {
+        const input = document.getElementById("join-code-input");
+        const errorEl = document.getElementById("join-error");
+        const code = input.value.trim().toUpperCase();
+
+        if (code.length === 0) {
+          errorEl.textContent = "Please enter a code.";
+          return;
+        }
+
+        if (!(await room_exists(code))){
+          errorEl.textContent = "Room does not exist."
+          return;
+        }
+
+        errorEl.textContent = "";
+        window.location.href =
+          "waiting-room.html?code=" + encodeURIComponent(code) + "&role=join";
+      }
+
+      // Allow Enter key to submit join code
+      document.addEventListener("keydown", async function (e) {
+        if (
+          e.key === "Enter" &&
+          !document.getElementById("screen-join").classList.contains("hidden")
+        ) {
+          await submitJoinCode();
+        }
+      });
+
+      window.showScreen = showScreen;
+      window.startHosting = startHosting;
+      window.submitJoinCode = submitJoinCode;
     </script>
-</body>
+  </body>
 </html>
