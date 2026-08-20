@@ -61,7 +61,7 @@ const user_path = (userId: string | number) =>
 
 const join_room_presence = async (myUserRank: number) => {
   const myUserRef = user_path(myUserRank);
-  const connectionRank = Math.random();
+  const connectionRank = myUserRank;
   await set(myUserRef, { connectionRank });
   onDisconnect(myUserRef).remove();
 };
