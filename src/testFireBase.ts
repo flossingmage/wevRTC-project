@@ -3,28 +3,39 @@ import { FastPeerConnection, type SignalServer } from "./netaware";
 import {
   ref,
   onValue,
+  onChildRemoved,
   child,
   get,
   onDisconnect,
   remove,
   set,
+  runTransaction,
 } from "firebase/database";
 
 const params = new URLSearchParams(window.location.search);
 const roomId = params.get("code");
-const userId = params.get("user");
 
-if (!roomId || !userId) {
-  throw new Error(
-    "Missing room code or user id in the URL (?code=...&user=...)",
-  );
-}
+const roomRef = ref(db, `rooms/${roomId}`);
+
+let userRankValue: number | null = null;
+const userRankPromise: Promise<number> = runTransaction(
+  child(roomRef, "userCount"),
+  (count) => (count || 0) + 1,
+).then((result) => {
+  if (!result.committed) {
+    throw new Error("Failed to claim a userRank (transaction aborted).");
+  }
+  const rank: number = result.snapshot.val();
+  userRankValue = rank;
+  return rank;
+});
 
 const connections = new Map<string, FastPeerConnection>();
 
 export type CallUIHooks = {
   onLocalStream: (stream: MediaStream) => void;
   onRemoteStream: (peerUserId: string, stream: MediaStream) => void;
+  onPeerLeft: (peerUserId: string) => void;
   onStatusChange: (status: "connecting" | "connected" | "disconnected") => void;
 };
 
@@ -45,30 +56,26 @@ const get_local_preview_stream = async (): Promise<MediaStream> => {
   return localStream;
 };
 
-const join_room_presence = async () => {
-  const myUserRef = ref(db, `rooms/${roomId}/users/${userId}`);
+const user_path = (userId: string | number) =>
+  ref(db, `rooms/${roomId}/users/${userId}`);
+
+const join_room_presence = async (myUserRank: number) => {
+  const myUserRef = user_path(myUserRank);
   const connectionRank = Math.random();
   await set(myUserRef, { connectionRank });
   onDisconnect(myUserRef).remove();
 };
 
-const create_video_tile = (stream: MediaStream): HTMLDivElement => {
-  const container = document.createElement("div");
-  const video = document.createElement("video");
-  video.srcObject = stream;
-  video.play();
-  container.appendChild(video);
-  return container;
-};
+const make_connection_id = (a: string, b: string) => [a, b].sort().join("_");
 
-const create_connection = async (peerUserId: string) => {
-  const peerUserRef = ref(db, `rooms/${roomId}/users/${peerUserId}`);
-  const myUserRef = ref(db, `rooms/${roomId}/users/${userId}`);
+const create_connection = async (peerUserId: string, myUserRank: number) => {
+  const peerUserRef = user_path(peerUserId);
+  const myUserRef = user_path(myUserRank);
 
-  const peerRankSnapshot = (
-    await get(child(peerUserRef, "connectionRank"))
-  ).val();
-  const myRankSnapshot = (await get(child(myUserRef, "connectionRank"))).val();
+  const [peerRankSnapshot, myRankSnapshot] = await Promise.all([
+    get(child(peerUserRef, "connectionRank")).then((s) => s.val()),
+    get(child(myUserRef, "connectionRank")).then((s) => s.val()),
+  ]);
 
   const signal_server: SignalServer = {
     makes_first_move: myRankSnapshot < peerRankSnapshot,
@@ -90,7 +97,7 @@ const create_connection = async (peerUserId: string) => {
 
   uiHooks?.onStatusChange("connecting");
 
-  const connectionId = make_connection_id(userId!, peerUserId);
+  const connectionId = make_connection_id(String(myUserRank), peerUserId);
 
   if (signal_server.makes_first_move) {
     conn.host_with_firebase(roomId!, connectionId);
@@ -102,31 +109,40 @@ const create_connection = async (peerUserId: string) => {
   uiHooks?.onStatusChange("connected");
 };
 
-const make_connection_id = (a: string, b: string) => [a, b].sort().join("_");
+const handle_peer_left = (peerUserId: string) => {
+  connections.delete(peerUserId);
+  uiHooks?.onPeerLeft(peerUserId);
+};
 
 export const begin_connection = async () => {
+  const myUserRank = await userRankPromise;
+
   await get_local_preview_stream();
-  await join_room_presence();
+  await join_room_presence(myUserRank);
 
+  const myUserIdStr = String(myUserRank);
   const usersRef = ref(db, `rooms/${roomId}/users`);
-  const userSnapshot = await get(usersRef);
-  const tasks: Promise<void>[] = [];
-  userSnapshot.forEach((user) => {
-    const peerUserId = user.key;
-    if (peerUserId && peerUserId !== userId) {
-      tasks.push(create_connection(peerUserId));
-    }
-  });
-  await Promise.all(tasks);
 
-  // Watch for peers who join after us (e.g. we're the host, they join late).
+  // Watch for peers to join
   onValue(usersRef, (snapshot) => {
     snapshot.forEach((user) => {
       const peerUserId = user.key;
-      if (peerUserId && peerUserId !== userId && !connections.has(peerUserId)) {
-        create_connection(peerUserId);
+      if (
+        peerUserId &&
+        peerUserId !== myUserIdStr &&
+        !connections.has(peerUserId)
+      ) {
+        create_connection(peerUserId, myUserRank);
       }
     });
+  });
+
+  // Watch for peers to leave
+  onChildRemoved(usersRef, (snapshot) => {
+    const peerUserId = snapshot.key;
+    if (peerUserId && peerUserId !== myUserIdStr) {
+      handle_peer_left(peerUserId);
+    }
   });
 };
 
@@ -147,7 +163,9 @@ export const share_screen = () => {
 };
 
 export const leave_call = async () => {
-  await remove(ref(db, `rooms/${roomId}/users/${userId}`));
+  if (userRankValue !== null) {
+    await remove(user_path(userRankValue));
+  }
   localStream?.getTracks().forEach((track) => track.stop());
   connections.clear();
 };

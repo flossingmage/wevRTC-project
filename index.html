@@ -250,7 +250,7 @@
       function startHosting() {
         const code = document.getElementById("generated-code").textContent;
         window.location.href =
-          "waiting-room.html?code=" + encodeURIComponent(code) + "&role=host";
+          "call-room.html?code=" + encodeURIComponent(code) + "&role=host";
       }
 
       async function submitJoinCode() {
@@ -270,7 +270,7 @@
 
         errorEl.textContent = "";
         window.location.href =
-          "waiting-room.html?code=" + encodeURIComponent(code) + "&role=join";
+          "call-room.html?code=" + encodeURIComponent(code) + "&role=join";
       }
 
       // Allow Enter key to submit join code

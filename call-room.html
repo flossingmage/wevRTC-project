@@ -72,17 +72,13 @@
       main {
         flex: 1;
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        /* auto-fit means the grid reflows as tiles are added/removed,
+           instead of a fixed 2-column layout for exactly 2 people */
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        grid-auto-rows: minmax(200px, 1fr);
         gap: 16px;
         padding: 20px;
-        overflow: hidden;
-      }
-
-      @media (max-width: 700px) {
-        main {
-          grid-template-columns: 1fr;
-          grid-template-rows: 1fr 1fr;
-        }
+        overflow: auto;
       }
 
       .video-tile {
@@ -177,27 +173,13 @@
       </div>
     </header>
 
-    <main>
+    <main id="tiles">
       <div class="video-tile" id="local-tile">
         <video id="local-video" autoplay playsinline muted></video>
         <div class="placeholder" id="local-placeholder">
           Waiting for camera...
         </div>
         <span class="tag">You</span>
-      </div>
-      <div class="video-tile" id="remote-tile">
-        <video id="remote-video" autoplay playsinline></video>
-        <div class="placeholder" id="remote-placeholder">
-          Waiting for the other player to join...
-        </div>
-        <span class="tag">Peer</span>
-      </div>
-      <div class="video-tile" id="remote-tile">
-        <video id="remote-video" autoplay playsinline></video>
-        <div class="placeholder" id="remote-placeholder">
-          Waiting for the other player to join...
-        </div>
-        <span class="tag">Peer</span>
       </div>
     </main>
 
@@ -224,10 +206,9 @@
       document.getElementById("room-code-display").textContent =
         params.get("code") ?? "------";
 
-      const localVideo = document.getElementById("local-video");
+      const tilesContainer = document.getElementById("tiles");
       const localPlaceholder = document.getElementById("local-placeholder");
-      const remoteVideo = document.getElementById("remote-video");
-      const remotePlaceholder = document.getElementById("remote-placeholder");
+      const localVideo = document.getElementById("local-video");
       const statusDot = document.getElementById("status-dot");
       const statusText = document.getElementById("status-text");
       const micBtn = document.getElementById("mic-btn");
@@ -237,14 +218,52 @@
       let micOn = true;
       let camOn = true;
 
+      const remoteTiles = new Map();
+
+      const create_remote_tile = (peerUserId) => {
+        const tile = document.createElement("div");
+        tile.className = "video-tile";
+
+        const video = document.createElement("video");
+        video.autoplay = true;
+        video.playsInline = true;
+
+        const placeholder = document.createElement("div");
+        placeholder.className = "placeholder";
+        placeholder.textContent = "Connecting...";
+
+        const tag = document.createElement("span");
+        tag.className = "tag";
+        tag.textContent = "Peer";
+
+        tile.append(video, placeholder, tag);
+        tilesContainer.appendChild(tile);
+
+        const entry = { tile, video, placeholder };
+        remoteTiles.set(peerUserId, entry);
+        return entry;
+      };
+
+      const remove_remote_tile = (peerUserId) => {
+        const entry = remoteTiles.get(peerUserId);
+        if (!entry) return;
+        entry.video.srcObject = null;
+        entry.tile.remove();
+        remoteTiles.delete(peerUserId);
+      };
+
       register_ui_hooks({
         onLocalStream: (stream) => {
           localVideo.srcObject = stream;
           localPlaceholder.style.display = "none";
         },
-        onRemoteStream: (_peerUserId, stream) => {
-          remoteVideo.srcObject = stream;
-          remotePlaceholder.style.display = "none";
+        onRemoteStream: (peerUserId, stream) => {
+          const entry = remoteTiles.get(peerUserId) ?? create_remote_tile(peerUserId);
+          entry.video.srcObject = stream;
+          entry.placeholder.style.display = "none";
+        },
+        onPeerLeft: (peerUserId) => {
+          remove_remote_tile(peerUserId);
         },
         onStatusChange: (status) => {
           statusDot.className = "status-dot " + status;
