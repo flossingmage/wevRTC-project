@@ -25,7 +25,6 @@ const roomId = params.get("code");
 
 const roomRef = ref(db, `rooms/${roomId}`);
 
-//get user rank
 //TODO: move this into main page and load the rank into the URL
 let userRankValue: number | null = null;
 const userRankPromise: Promise<number> = runTransaction(
@@ -42,10 +41,6 @@ const connections = new Map<string, FastPeerConnection>();
 let uiHooks: CallUIHooks | null = null;
 let localStream: MediaStream | null = null;
 
-export const register_ui_hooks = (hooks: CallUIHooks) => {
-  uiHooks = hooks;
-};
-
 const get_local_preview_stream = async (): Promise<MediaStream> => {
   if (localStream) return localStream;
   localStream = await navigator.mediaDevices.getUserMedia({
@@ -59,6 +54,14 @@ const get_local_preview_stream = async (): Promise<MediaStream> => {
 const user_path = (userId: string | number) =>
   ref(db, `rooms/${roomId}/users/${userId}`);
 
+/**
+ * @param a connection rank of the first user
+ * @param b connection rank of the second user
+ * @returns the connection ID to where the connection prosses is stored in the db.
+ */
+const make_connection_id = (a: string, b: string) => [a, b].sort().join("_");
+
+// TODO: change room presence to setup firebase
 const join_room_presence = async (myUserRank: number) => {
   const myUserRef = user_path(myUserRank);
   const connectionRank = myUserRank;
@@ -66,12 +69,12 @@ const join_room_presence = async (myUserRank: number) => {
   onDisconnect(myUserRef).remove();
 };
 
-const make_connection_id = (a: string, b: string) => [a, b].sort().join("_");
-
+// TODO: need to finish the todos in here.
 const create_connection = async (peerUserId: string, myUserRank: number) => {
   const peerUserRef = user_path(peerUserId);
   const myUserRef = user_path(myUserRank);
 
+  // TODO: I won't need to get my connection rank I'll have it stored as global variable.
   const [peerRankSnapshot, myRankSnapshot] = await Promise.all([
     get(child(peerUserRef, "connectionRank")).then((s) => s.val()),
     get(child(myUserRef, "connectionRank")).then((s) => s.val()),
@@ -113,12 +116,19 @@ const handle_peer_left = (peerUserId: string) => {
   uiHooks?.onPeerLeft(peerUserId);
 };
 
+export const register_ui_hooks = (hooks: CallUIHooks) => {
+  uiHooks = hooks;
+};
+
+// TODO: need to finish the todos in here.
 export const begin_connection = async () => {
+  // TODO: the user rank will be gotten from the URL later.
   const myUserRank = await userRankPromise;
 
   await get_local_preview_stream();
   await join_room_presence(myUserRank);
 
+  // TODO: right now the user ID is just the rank, will change to something else later.
   const myUserIdStr = String(myUserRank);
   const usersRef = ref(db, `rooms/${roomId}/users`);
 
@@ -145,6 +155,7 @@ export const begin_connection = async () => {
   });
 };
 
+// TODO: add functinality to toggle mic and camera, share screen
 export const toggle_mic = (enabled: boolean) => {
   localStream?.getAudioTracks().forEach((track) => {
     track.enabled = enabled;

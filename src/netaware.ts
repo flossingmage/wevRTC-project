@@ -33,6 +33,8 @@ export type SignalServer = {
  * A simple library for creating stable webrtc connections.
  * A connection fails completely if a dropped connection is
  * not restored within timeout_ms.
+ * TODO: implement timeout_ms, make it so fastpeerconnection uses signal_server 
+ * TODO: make fastpeerconnection more generic (move firebase stuff out, and get rid of the messeging system and make it so that the user can implement their own messeging system)
  */
 export class FastPeerConnection {
   private readonly signal_server: SignalServer;
@@ -75,7 +77,7 @@ export class FastPeerConnection {
         while (this.message_queue.length > 0) {
           this.send(String(this.message_queue.shift()), "message");
         }
-
+        // remove event listener after first message channel is established
         this.connection.removeEventListener("datachannel", listener);
       };
       this.connection.addEventListener("datachannel", listener);
@@ -248,7 +250,6 @@ export class FastPeerConnection {
 
   /**
    * establishes media stream between peers.
-   * puts videos in HTMLVideoElements with the id=localVideo and id=remoteVideo if they exist
    * @param constraints
    */
   async addMediaStream(
@@ -266,6 +267,7 @@ export class FastPeerConnection {
     });
   }
 
+  // TODO: implement screen sharing
   async share_screen() {
     const screenStream = await navigator.mediaDevices.getDisplayMedia({
       video: true,
@@ -289,6 +291,7 @@ export class FastPeerConnection {
     };
   }
 
+  // TODO: implement stop screen sharing
   stop_Screen_Share() {}
   /**
    * Called by the third-party signaling mechanism
