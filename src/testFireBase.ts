@@ -12,32 +12,32 @@ import {
   runTransaction,
 } from "firebase/database";
 
-const params = new URLSearchParams(window.location.search);
-const roomId = params.get("code");
-
-const roomRef = ref(db, `rooms/${roomId}`);
-
-let userRankValue: number | null = null;
-const userRankPromise: Promise<number> = runTransaction(
-  child(roomRef, "userCount"),
-  (count) => (count || 0) + 1,
-).then((result) => {
-  if (!result.committed) {
-    throw new Error("Failed to claim a userRank (transaction aborted).");
-  }
-  const rank: number = result.snapshot.val();
-  userRankValue = rank;
-  return rank;
-});
-
-const connections = new Map<string, FastPeerConnection>();
-
 export type CallUIHooks = {
   onLocalStream: (stream: MediaStream) => void;
   onRemoteStream: (peerUserId: string, stream: MediaStream) => void;
   onPeerLeft: (peerUserId: string) => void;
   onStatusChange: (status: "connecting" | "connected" | "disconnected") => void;
 };
+
+//get info from URL
+const params = new URLSearchParams(window.location.search);
+const roomId = params.get("code");
+
+const roomRef = ref(db, `rooms/${roomId}`);
+
+//get user rank
+//TODO: move this into main page and load the rank into the URL
+let userRankValue: number | null = null;
+const userRankPromise: Promise<number> = runTransaction(
+  child(roomRef, "userCount"),
+  (count) => (count || 0) + 1,
+).then((result) => {
+  const rank: number = result.snapshot.val();
+  userRankValue = rank;
+  return rank;
+});
+
+const connections = new Map<string, FastPeerConnection>();
 
 let uiHooks: CallUIHooks | null = null;
 let localStream: MediaStream | null = null;
@@ -87,7 +87,6 @@ const create_connection = async (peerUserId: string, myUserRank: number) => {
       uiHooks?.onStatusChange("disconnected");
     },
   };
-
   const conn = new FastPeerConnection(signal_server, 1000);
   connections.set(peerUserId, conn);
 

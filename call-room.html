@@ -173,6 +173,7 @@
       </div>
     </header>
 
+    <!--This is where all the vidoes are added-->
     <main id="tiles">
       <div class="video-tile" id="local-tile">
         <video id="local-video" autoplay playsinline muted></video>
@@ -183,6 +184,7 @@
       </div>
     </main>
 
+    <!--Storing all interactable buttons here-->
     <footer>
       <button class="control-btn" id="mic-btn" title="Toggle microphone">
         🎤
@@ -202,10 +204,12 @@
         leave_call,
       } from "./src/testFireBase.js";
 
+      //getting info from URL
       const params = new URLSearchParams(window.location.search);
       document.getElementById("room-code-display").textContent =
         params.get("code") ?? "------";
 
+      // define html elements
       const tilesContainer = document.getElementById("tiles");
       const localPlaceholder = document.getElementById("local-placeholder");
       const localVideo = document.getElementById("local-video");
@@ -218,6 +222,7 @@
       let micOn = true;
       let camOn = true;
 
+      // managing tiles
       const remoteTiles = new Map();
 
       const create_remote_tile = (peerUserId) => {
