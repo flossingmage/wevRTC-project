@@ -9,7 +9,6 @@ import {
   onDisconnect,
   remove,
   set,
-  runTransaction,
 } from "firebase/database";
 
 export type CallUIHooks = {
@@ -19,22 +18,12 @@ export type CallUIHooks = {
   onStatusChange: (status: "connecting" | "connected" | "disconnected") => void;
 };
 
+// TODO: make desconnects trigger from FastPeerConnection state change instead of being triggered by firebase
+
 //get info from URL
 const params = new URLSearchParams(window.location.search);
 const roomId = params.get("code");
-
-const roomRef = ref(db, `rooms/${roomId}`);
-
-//TODO: move this into main page and load the rank into the URL
-let userRankValue: number | null = null;
-const userRankPromise: Promise<number> = runTransaction(
-  child(roomRef, "userCount"),
-  (count) => (count || 0) + 1,
-).then((result) => {
-  const rank: number = result.snapshot.val();
-  userRankValue = rank;
-  return rank;
-});
+const userRank = params.get("rank")!; // this should never be null
 
 const connections = new Map<string, FastPeerConnection>();
 
@@ -62,26 +51,22 @@ const user_path = (userId: string | number) =>
 const make_connection_id = (a: string, b: string) => [a, b].sort().join("_");
 
 // TODO: change room presence to setup firebase
-const join_room_presence = async (myUserRank: number) => {
-  const myUserRef = user_path(myUserRank);
-  const connectionRank = myUserRank;
+const join_room_presence = async () => {
+  const myUserRef = user_path(userRank);
+  const connectionRank = userRank;
   await set(myUserRef, { connectionRank });
   onDisconnect(myUserRef).remove();
 };
 
-// TODO: need to finish the todos in here.
-const create_connection = async (peerUserId: string, myUserRank: number) => {
+const create_connection = async (peerUserId: string) => {
   const peerUserRef = user_path(peerUserId);
-  const myUserRef = user_path(myUserRank);
 
-  // TODO: I won't need to get my connection rank I'll have it stored as global variable.
-  const [peerRankSnapshot, myRankSnapshot] = await Promise.all([
-    get(child(peerUserRef, "connectionRank")).then((s) => s.val()),
-    get(child(myUserRef, "connectionRank")).then((s) => s.val()),
-  ]);
+  const peerRankSnapshot = await get(child(peerUserRef, "connectionRank")).then(
+    (s) => s.val(),
+  );
 
   const signal_server: SignalServer = {
-    makes_first_move: myRankSnapshot < peerRankSnapshot,
+    makes_first_move: userRank < peerRankSnapshot,
     send_signal_state: async (state: string) => {
       console.log("Sending signal state:", state);
     },
@@ -99,7 +84,7 @@ const create_connection = async (peerUserId: string, myUserRank: number) => {
 
   uiHooks?.onStatusChange("connecting");
 
-  const connectionId = make_connection_id(String(myUserRank), peerUserId);
+  const connectionId = make_connection_id(userRank, peerUserId);
 
   if (signal_server.makes_first_move) {
     conn.host_with_firebase(roomId!, connectionId);
@@ -120,16 +105,12 @@ export const register_ui_hooks = (hooks: CallUIHooks) => {
   uiHooks = hooks;
 };
 
-// TODO: need to finish the todos in here.
 export const begin_connection = async () => {
-  // TODO: the user rank will be gotten from the URL later.
-  const myUserRank = await userRankPromise;
-
   await get_local_preview_stream();
-  await join_room_presence(myUserRank);
+  await join_room_presence();
 
-  // TODO: right now the user ID is just the rank, will change to something else later.
-  const myUserIdStr = String(myUserRank);
+  // TODO: right now the user ID is just the rank, might change to something else later.
+  const myUserIdStr = userRank;
   const usersRef = ref(db, `rooms/${roomId}/users`);
 
   // Watch for peers to join
@@ -141,7 +122,7 @@ export const begin_connection = async () => {
         peerUserId !== myUserIdStr &&
         !connections.has(peerUserId)
       ) {
-        create_connection(peerUserId, myUserRank);
+        create_connection(peerUserId);
       }
     });
   });
@@ -173,9 +154,7 @@ export const share_screen = () => {
 };
 
 export const leave_call = async () => {
-  if (userRankValue !== null) {
-    await remove(user_path(userRankValue));
-  }
+  await remove(user_path(userRank));
   localStream?.getTracks().forEach((track) => track.stop());
   connections.clear();
 };

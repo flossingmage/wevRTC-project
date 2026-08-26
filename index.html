@@ -203,8 +203,8 @@
     </div>
 
     <script type="module">
-       import {db} from "./src/firebase"
-       import {ref, child, get} from "firebase/database"
+      import { db } from "./src/firebase";
+      import { ref, child, get, runTransaction } from "firebase/database";
 
       async function showScreen(name) {
         document.getElementById("screen-choice").classList.add("hidden");
@@ -228,10 +228,10 @@
 
       async function room_exists(code) {
         const room_ref = await get(ref(db, `rooms/${code}`));
-          if (room_ref.exists()){
-           return true;
-          }
-          return false;
+        if (room_ref.exists()) {
+          return true;
+        }
+        return false;
       }
 
       async function generateRoomCode() {
@@ -241,16 +241,26 @@
           code += chars[Math.floor(Math.random() * chars.length)];
         }
 
-          if (await room_exists(code)){
-           return await generateRoomCode();
-          }
+        if (await room_exists(code)) {
+          return await generateRoomCode();
+        }
         return code;
       }
 
       function startHosting() {
         const code = document.getElementById("generated-code").textContent;
         window.location.href =
-          "call-room.html?code=" + encodeURIComponent(code) + "&role=host";
+          "call-room.html?code=" + encodeURIComponent(code) + "&rank=0";
+      }
+
+      async function getRank(code) {
+        const room_ref = ref(db, `rooms/${code}`);
+        return await runTransaction(
+          child(room_ref, "ranks"),
+          (count) => (count || 0) + 1,
+        ).then((result) => {
+          return result.snapshot.val();
+        });
       }
 
       async function submitJoinCode() {
@@ -263,14 +273,16 @@
           return;
         }
 
-        if (!(await room_exists(code))){
-          errorEl.textContent = "Room does not exist."
+        if (!(await room_exists(code))) {
+          errorEl.textContent = "Room does not exist.";
           return;
         }
 
+        const rank = await getRank(code);
+
         errorEl.textContent = "";
         window.location.href =
-          "call-room.html?code=" + encodeURIComponent(code) + "&role=join";
+          "call-room.html?code=" + encodeURIComponent(code) + "&rank=" + rank;
       }
 
       // Allow Enter key to submit join code
