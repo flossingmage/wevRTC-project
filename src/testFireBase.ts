@@ -51,10 +51,12 @@ const user_path = (userId: string | number) =>
 const make_connection_id = (a: string, b: string) => [a, b].sort().join("_");
 
 // TODO: change room presence to setup firebase
-const join_room_presence = async () => {
+const presence = async () => {
   const myUserRef = user_path(userRank);
   const connectionRank = userRank;
   await set(myUserRef, { connectionRank });
+
+  // TODO: Make one disconnect be 
   onDisconnect(myUserRef).remove();
 };
 
@@ -96,6 +98,7 @@ const create_connection = async (peerUserId: string) => {
   uiHooks?.onStatusChange("connected");
 };
 
+// TODO: make this clean up left over connection and remove the connection form the db.
 const handle_peer_left = (peerUserId: string) => {
   connections.delete(peerUserId);
   uiHooks?.onPeerLeft(peerUserId);
@@ -107,7 +110,7 @@ export const register_ui_hooks = (hooks: CallUIHooks) => {
 
 export const begin_connection = async () => {
   await get_local_preview_stream();
-  await join_room_presence();
+  await presence();
 
   // TODO: right now the user ID is just the rank, might change to something else later.
   const myUserIdStr = userRank;

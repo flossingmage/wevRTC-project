@@ -298,7 +298,7 @@ export class FastPeerConnection {
    * whenever a state update is propogated from the
    * other end of the peer connection.
    */
-  // async set_peer_signal_state(state: string): Promise<void> {}
+  //async set_peer_signal_state(state: string): Promise<void> {}
 
   /**
    * Returns a promise that is fullfilled if a connection succesfully
