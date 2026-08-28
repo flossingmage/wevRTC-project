@@ -12,8 +12,7 @@ export type SignalServer = {
    * our two ends of the connection need to negotiate the connection itself first.
    * They would, for example, exchange IP addresses and which underlying connection method (TCP, UDP, etc.)
    * they support. This {@link send_signal_state} allows both of our servers to exchange shared state.
-   * The channel is provi
-   * ded by the user of {@link FastPeerConnection}.
+   * The channel is provided by the user of {@link FastPeerConnection}.
    *
    * @param state An arbitrary state string the server wants to send to the other end of the {@link FastPeerConnection}.
    * @returns A promise that is fullfilled when the message has been succesfully sent to the other end of
@@ -28,6 +27,10 @@ export type SignalServer = {
    */
   error_handler: () => Promise<void>;
 };
+
+export type SignalData = {
+  type: "offer" | "answer" | "ice-candidate";
+}
 
 /**
  * A simple library for creating stable webrtc connections.
@@ -103,6 +106,8 @@ export class FastPeerConnection {
     };
   }
 
+
+  //TODO: move out from fastpeerconnection
   host_with_firebase(roomId: string, connectionId: string) {
     const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
 
@@ -135,6 +140,7 @@ export class FastPeerConnection {
     });
   }
 
+  //TODO: move out from fastpeerconnection
   join_with_firebase(roomId: string, connectionId: string) {
     const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
 
@@ -165,6 +171,7 @@ export class FastPeerConnection {
     });
   }
 
+  //TODO: I'm going to need to remove the web socket stuff
   connect_with_webSockets(ws: WebSocket) {
     this.connection.onicecandidate = (event) => {
       if (event.candidate) {
@@ -205,6 +212,7 @@ export class FastPeerConnection {
     };
   }
 
+  //TODO: I'm going to need to remove the web socket stuff
   send_webSocket_offer(ws: WebSocket) {
     this.connection.createOffer().then(async (offer) => {
       await this.connection.setLocalDescription(offer);
@@ -293,12 +301,13 @@ export class FastPeerConnection {
 
   // TODO: implement stop screen sharing
   stop_Screen_Share() {}
+  
   /**
    * Called by the third-party signaling mechanism
    * whenever a state update is propogated from the
    * other end of the peer connection.
    */
-  //async set_peer_signal_state(state: string): Promise<void> {}
+  // async set_peer_signal_state(state: string): Promise<void> {}
 
   /**
    * Returns a promise that is fullfilled if a connection succesfully
