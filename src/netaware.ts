@@ -35,7 +35,8 @@ export type SignalData = {
  * A connection fails completely if a dropped connection is
  * not restored within timeout_ms.
  * TODO: implement timeout_ms, make it so fastpeerconnection uses signal_server 
- * TODO: make fastpeerconnection more generic (move firebase stuff out, and get rid of the messeging system and make it so that the user can implement their own messeging system)
+ * TODO: make fastpeerconnection more generic (get rid of the messeging system and make it so that the user can implement their own messeging system,
+ * TODO: change media stream
  */
 export class FastPeerConnection {
   private readonly signal_server: SignalServer;
@@ -183,10 +184,12 @@ export class FastPeerConnection {
     constraints: MediaStreamConstraints,
     onRemoteStream?: (stream: MediaStream) => void,
   ) {
-    const localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    localStream.getTracks().forEach((track) => {
-      this.connection.addTrack(track, localStream);
-    });
+    
+    await navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+      stream.getTracks().forEach((track) => {
+      this.connection.addTrack(track, stream);
+      })
+    })
 
     this.connection.addEventListener("track", (event) => {
       const [remoteStream] = event.streams;
