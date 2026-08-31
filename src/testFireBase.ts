@@ -9,6 +9,7 @@ import {
   onDisconnect,
   remove,
   set,
+  push,
 } from "firebase/database";
 
 export type CallUIHooks = {
@@ -56,8 +57,67 @@ const presence = async () => {
   const connectionRank = userRank;
   await set(myUserRef, { connectionRank });
 
-  // TODO: Make one disconnect be 
+  // TODO: Make one disconnect be
   onDisconnect(myUserRef).remove();
+};
+
+const host_with_firebase = async (
+  roomId: string,
+  connectionId: string,
+  connection: FastPeerConnection,
+) => {
+  const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
+
+  connection.on_ice_candidate((candidate) => {
+      push(child(roomRef, "offerCandidates"), candidate.toJSON());
+
+  })
+
+  const offer = await connection.create_offer();
+  await set(child(roomRef, "offer"), {
+    sdp: offer.sdp,
+    type: offer.type,
+  });
+
+  onValue(child(roomRef, "answer"), async (snapshot) => {
+    const answer = snapshot.val();
+    await connection.setRemoteDescription(answer);
+  });
+
+  onValue(child(roomRef, "answerCandidates"), (snapshot) => {
+    snapshot.forEach((candidate) => {
+      connection.add_ice_candidate(new RTCIceCandidate(candidate.val()));
+    });
+  });
+};
+
+const join_with_firebase = (
+  roomId: string,
+  connectionId: string,
+  connection: FastPeerConnection,
+) => {
+  const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
+
+   connection.on_ice_candidate((candidate) => {
+      push(child(roomRef, "answerCandidates"), candidate.toJSON());
+   });
+
+  onValue(child(roomRef, "offer"), async (snapshot) => {
+    const offer = snapshot.val();
+    await connection.setRemoteDescription(offer);
+
+    const answer = await connection.create_answer();
+    await set(child(roomRef, "answer"), {
+      sdp: answer.sdp,
+      type: answer.type,
+    });
+  });
+
+  onValue(child(roomRef, "offerCandidates"), (snapshot) => {
+    snapshot.forEach((candidate) => {
+      connection.add_ice_candidate(new RTCIceCandidate(candidate.val()));
+    });
+  });
 };
 
 const create_connection = async (peerUserId: string) => {
@@ -77,10 +137,10 @@ const create_connection = async (peerUserId: string) => {
       uiHooks?.onStatusChange("disconnected");
     },
   };
-  const conn = new FastPeerConnection(signal_server, 1000);
-  connections.set(peerUserId, conn);
+  const connection = new FastPeerConnection(signal_server, 1000);
+  connections.set(peerUserId, connection);
 
-  await conn.addMediaStream({ video: true, audio: true }, (stream) => {
+  await connection.addMediaStream({ video: true, audio: true }, (stream) => {
     uiHooks?.onRemoteStream(peerUserId, stream);
   });
 
@@ -89,12 +149,12 @@ const create_connection = async (peerUserId: string) => {
   const connectionId = make_connection_id(userRank, peerUserId);
 
   if (signal_server.makes_first_move) {
-    conn.host_with_firebase(roomId!, connectionId);
+    host_with_firebase(roomId!, connectionId, connection);
   } else {
-    conn.join_with_firebase(roomId!, connectionId);
+    join_with_firebase(roomId!, connectionId, connection);
   }
 
-  await conn.on_ready();
+  await connection.on_ready();
   uiHooks?.onStatusChange("connected");
 };
 
@@ -108,6 +168,7 @@ export const register_ui_hooks = (hooks: CallUIHooks) => {
   uiHooks = hooks;
 };
 
+//TODO remove the onChildRemoved. Make clean up happen on rtc connection disconnect.  
 export const begin_connection = async () => {
   await get_local_preview_stream();
   await presence();
@@ -139,19 +200,21 @@ export const begin_connection = async () => {
   });
 };
 
-// TODO: add functinality to toggle mic and camera, share screen
+// TODO: add functinality to toggle mic
 export const toggle_mic = (enabled: boolean) => {
   localStream?.getAudioTracks().forEach((track) => {
     track.enabled = enabled;
   });
 };
 
+// TODO: add functinality to toggle camera
 export const toggle_camera = (enabled: boolean) => {
   localStream?.getVideoTracks().forEach((track) => {
     track.enabled = enabled;
   });
 };
 
+// TODO: add functinality to share screen
 export const share_screen = () => {
   connections.forEach((conn) => conn.share_screen());
 };

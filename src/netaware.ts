@@ -1,6 +1,3 @@
-import { db } from "./firebase.ts";
-import { ref, push, set, onValue, child } from "firebase/database";
-
 export type SignalServer = {
   /**
    * Which end of the connection initiates, i.e. makes the first move.
@@ -30,6 +27,7 @@ export type SignalServer = {
 
 export type SignalData = {
   type: "offer" | "answer" | "ice-candidate";
+  data: any;
 }
 
 /**
@@ -106,118 +104,39 @@ export class FastPeerConnection {
     };
   }
 
-
-  //TODO: move out from fastpeerconnection
-  host_with_firebase(roomId: string, connectionId: string) {
-    const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
-
-    this.connection.onicecandidate = (event) => {
-      if (event.candidate)
-        push(child(roomRef, "offerCandidates"), event.candidate.toJSON());
-    };
-
-    this.connection.createOffer().then(async (offer) => {
+  
+  create_offer(){
+    return this.connection.createOffer().then(async (offer) => {
       await this.connection.setLocalDescription(offer);
-      await set(child(roomRef, "offer"), {
-        sdp: offer.sdp,
-        type: offer.type,
-      });
-    });
-
-    onValue(child(roomRef, "answer"), async (snapshot) => {
-      const answer = snapshot.val();
-      if (answer && !this.connection.currentRemoteDescription) {
-        await this.connection.setRemoteDescription(
-          new RTCSessionDescription(answer),
-        );
-      }
-    });
-
-    onValue(child(roomRef, "answerCandidates"), (snapshot) => {
-      snapshot.forEach((candidate) => {
-        this.connection.addIceCandidate(new RTCIceCandidate(candidate.val()));
-      });
+      return offer;
     });
   }
 
-  //TODO: move out from fastpeerconnection
-  join_with_firebase(roomId: string, connectionId: string) {
-    const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
+  create_answer() {
+    return this.connection.createAnswer().then(async (answer) => {
+      await this.connection.setLocalDescription(answer)
+      return answer
+    });
+  }
 
+  async setRemoteDescription(discription: RTCSessionDescriptionInit){
+    if(!this.connection.currentRemoteDescription && discription != null){
+    await this.connection.setRemoteDescription(
+        new RTCSessionDescription(discription),
+      );
+    }
+  }
+
+  add_ice_candidate(candidate: RTCIceCandidate){
+    this.connection.addIceCandidate(candidate);
+  }
+
+  on_ice_candidate(callback: (candidate: RTCIceCandidate) => void ){
     this.connection.onicecandidate = (event) => {
-      if (event.candidate)
-        push(child(roomRef, "answerCandidates"), event.candidate.toJSON());
-    };
-
-    onValue(child(roomRef, "offer"), async (snapshot) => {
-      const offer = snapshot.val();
-      if (offer && !this.connection.currentRemoteDescription) {
-        await this.connection.setRemoteDescription(
-          new RTCSessionDescription(offer),
-        );
-        const answer = await this.connection.createAnswer();
-        await this.connection.setLocalDescription(answer);
-        await set(child(roomRef, "answer"), {
-          sdp: answer.sdp,
-          type: answer.type,
-        });
-      }
-    });
-
-    onValue(child(roomRef, "offerCandidates"), (snapshot) => {
-      snapshot.forEach((candidate) => {
-        this.connection.addIceCandidate(new RTCIceCandidate(candidate.val()));
-      });
-    });
-  }
-
-  //TODO: I'm going to need to remove the web socket stuff
-  connect_with_webSockets(ws: WebSocket) {
-    this.connection.onicecandidate = (event) => {
-      if (event.candidate) {
-        if (ws.readyState === ws.OPEN)
-          ws.send(
-            JSON.stringify({
-              type: "ice-candidate",
-              candidate: event.candidate,
-            }),
-          );
+      if (event.candidate){
+      callback(event.candidate);
       }
     };
-
-    ws.onmessage = async (message) => {
-      const data = JSON.parse(message.data);
-      switch (data.type) {
-        case "offer":
-          await this.connection.setRemoteDescription(
-            new RTCSessionDescription(data.offer),
-          );
-          const answer = await this.connection.createAnswer();
-          await this.connection.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: "answer", answer }));
-          ws.close();
-          break;
-        case "answer":
-          await this.connection.setRemoteDescription(
-            new RTCSessionDescription(data.answer),
-          );
-          ws.close();
-          break;
-        case "ice-candidate":
-          await this.connection.addIceCandidate(
-            new RTCIceCandidate(data.candidate),
-          );
-          break;
-      }
-    };
-  }
-
-  //TODO: I'm going to need to remove the web socket stuff
-  send_webSocket_offer(ws: WebSocket) {
-    this.connection.createOffer().then(async (offer) => {
-      await this.connection.setLocalDescription(offer);
-      ws.send(JSON.stringify({ type: "offer", offer }));
-    });
   }
 
   createDataChannel(label: string) {
@@ -301,13 +220,13 @@ export class FastPeerConnection {
 
   // TODO: implement stop screen sharing
   stop_Screen_Share() {}
-  
+
   /**
    * Called by the third-party signaling mechanism
    * whenever a state update is propogated from the
    * other end of the peer connection.
    */
-  // async set_peer_signal_state(state: string): Promise<void> {}
+  //async set_peer_signal_state(state: string): Promise<void> {}
 
   /**
    * Returns a promise that is fullfilled if a connection succesfully
