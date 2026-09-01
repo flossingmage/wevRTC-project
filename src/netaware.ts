@@ -28,13 +28,13 @@ export type SignalServer = {
 export type SignalData = {
   type: "offer" | "answer" | "ice-candidate";
   data: any;
-}
+};
 
 /**
  * A simple library for creating stable webrtc connections.
  * A connection fails completely if a dropped connection is
  * not restored within timeout_ms.
- * TODO: implement timeout_ms, make it so fastpeerconnection uses signal_server 
+ * TODO: implement timeout_ms, make it so fastpeerconnection uses signal_server
  * TODO: make fastpeerconnection more generic (get rid of the messeging system and make it so that the user can implement their own messeging system,
  * TODO: change media stream
  */
@@ -105,8 +105,7 @@ export class FastPeerConnection {
     };
   }
 
-  
-  create_offer(){
+  create_offer() {
     return this.connection.createOffer().then(async (offer) => {
       await this.connection.setLocalDescription(offer);
       return offer;
@@ -115,27 +114,27 @@ export class FastPeerConnection {
 
   create_answer() {
     return this.connection.createAnswer().then(async (answer) => {
-      await this.connection.setLocalDescription(answer)
-      return answer
+      await this.connection.setLocalDescription(answer);
+      return answer;
     });
   }
 
-  async setRemoteDescription(discription: RTCSessionDescriptionInit){
-    if(!this.connection.currentRemoteDescription && discription != null){
-    await this.connection.setRemoteDescription(
+  async setRemoteDescription(discription: RTCSessionDescriptionInit) {
+    if (!this.connection.currentRemoteDescription && discription != null) {
+      await this.connection.setRemoteDescription(
         new RTCSessionDescription(discription),
       );
     }
   }
 
-  add_ice_candidate(candidate: RTCIceCandidate){
+  add_ice_candidate(candidate: RTCIceCandidate) {
     this.connection.addIceCandidate(candidate);
   }
 
-  on_ice_candidate(callback: (candidate: RTCIceCandidate) => void ){
+  on_ice_candidate(callback: (candidate: RTCIceCandidate) => void) {
     this.connection.onicecandidate = (event) => {
-      if (event.candidate){
-      callback(event.candidate);
+      if (event.candidate) {
+        callback(event.candidate);
       }
     };
   }
@@ -184,12 +183,11 @@ export class FastPeerConnection {
     constraints: MediaStreamConstraints,
     onRemoteStream?: (stream: MediaStream) => void,
   ) {
-    
-    await navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+    await navigator.mediaDevices.getUserMedia(constraints).then((stream) => {
       stream.getTracks().forEach((track) => {
-      this.connection.addTrack(track, stream);
-      })
-    })
+        this.connection.addTrack(track, stream);
+      });
+    });
 
     this.connection.addEventListener("track", (event) => {
       const [remoteStream] = event.streams;
@@ -215,14 +213,7 @@ export class FastPeerConnection {
     } else {
       this.connection.addTrack(videoTrack, screenStream);
     }
-
-    videoTrack.onended = () => {
-      this.stop_Screen_Share();
-    };
   }
-
-  // TODO: implement stop screen sharing
-  stop_Screen_Share() {}
 
   /**
    * Called by the third-party signaling mechanism
@@ -275,10 +266,7 @@ export class FastPeerConnection {
    * If you want to receive every message sent over this channel,
    * register the listener before updating the {@link peer_signal_state}.
    */
-  listen(
-    data_channel: RTCDataChannel,
-    listener: (message: string) => void,
-  ): void {
+  listen(data_channel: RTCDataChannel, listener: (message: string) => void) {
     data_channel.addEventListener("message", (event) => {
       listener(event.data);
     });
