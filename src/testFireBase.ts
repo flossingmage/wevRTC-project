@@ -57,7 +57,7 @@ const presence = async () => {
   const connectionRank = userRank;
   await set(myUserRef, { connectionRank });
 
-  // TODO: Make one disconnect be
+  // TODO: Make disconnect trigger from rtc connection.
   onDisconnect(myUserRef).remove();
 };
 

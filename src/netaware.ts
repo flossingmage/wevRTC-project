@@ -139,17 +139,18 @@ export class FastPeerConnection {
     };
   }
 
-  createDataChannel(label: string) {
+  createDataChannel(label: string, listener?: (message: string) => void ) {
     const data_channel = this.connection.createDataChannel(label);
     this.data_channels.set(data_channel.label, data_channel);
     data_channel.onopen = () => {
-      this.listen(data_channel, (message) => {
+      this.listen(data_channel, listener? listener : (message) => {
         console.log(message);
       });
     };
     return data_channel;
   }
 
+  // this shouldn't be called by the user
   getDataChannel(label: string): Promise<RTCDataChannel> {
     const data_channel = this.data_channels.get(label);
     if (data_channel) return Promise.resolve(data_channel);
