@@ -3,10 +3,8 @@ import { FastPeerConnection, type SignalServer } from "./netaware";
 import {
   ref,
   onValue,
-  onChildRemoved,
   child,
   get,
-  onDisconnect,
   remove,
   set,
   push,
@@ -51,14 +49,9 @@ const user_path = (userId: string | number) =>
  */
 const make_connection_id = (a: string, b: string) => [a, b].sort().join("_");
 
-// TODO: change room presence to setup firebase
-const presence = async () => {
+const firebase_presence = async () => {
   const myUserRef = user_path(userRank);
-  const connectionRank = userRank;
-  await set(myUserRef, { connectionRank });
-
-  // TODO: Make disconnect trigger from rtc connection.
-  onDisconnect(myUserRef).remove();
+  await set(myUserRef, { userRank });
 };
 
 const host_with_firebase = async (
@@ -104,6 +97,12 @@ const join_with_firebase = (
 
   onValue(child(roomRef, "offer"), async (snapshot) => {
     const offer = snapshot.val();
+    
+    if (!offer){
+      console.log(offer)
+      return;
+    }
+
     await connection.setRemoteDescription(offer);
 
     const answer = await connection.create_answer();
@@ -155,6 +154,11 @@ const create_connection = async (peerUserId: string) => {
   }
 
   await connection.on_ready();
+
+  connection.on_close(() => {
+    handle_peer_left(peerUserId);
+  });
+
   uiHooks?.onStatusChange("connected");
 };
 
@@ -171,7 +175,7 @@ export const register_ui_hooks = (hooks: CallUIHooks) => {
 //TODO remove the onChildRemoved. Make clean up happen on rtc connection disconnect.  
 export const begin_connection = async () => {
   await get_local_preview_stream();
-  await presence();
+  await firebase_presence();
 
   // TODO: right now the user ID is just the rank, might change to something else later.
   const myUserIdStr = userRank;
@@ -192,12 +196,13 @@ export const begin_connection = async () => {
   });
 
   // Watch for peers to leave
-  onChildRemoved(usersRef, (snapshot) => {
-    const peerUserId = snapshot.key;
-    if (peerUserId && peerUserId !== myUserIdStr) {
-      handle_peer_left(peerUserId);
-    }
-  });
+  // onChildRemoved(usersRef, (snapshot) => {
+  //   const peerUserId = snapshot.key;
+  //   if (peerUserId && peerUserId !== myUserIdStr) {
+  //     handle_peer_left(peerUserId);
+  //   }
+  // });
+
 };
 
 // TODO: add functinality to toggle mic

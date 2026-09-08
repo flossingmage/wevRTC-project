@@ -297,13 +297,6 @@ export class FastPeerConnection {
     // close media
     this.connection.getSenders().forEach((sender) => sender.track?.stop());
 
-    const localVideo = document.querySelector<HTMLVideoElement>("#localVideo");
-    if (localVideo) localVideo.srcObject = null;
-
-    const remoteVideo =
-      document.querySelector<HTMLVideoElement>("#remoteVideo");
-    if (remoteVideo) remoteVideo.srcObject = null;
-
     // close data channels
     for (const channel of this.data_channels.values()) {
       channel.close();
@@ -318,5 +311,10 @@ export class FastPeerConnection {
 
     //close connection
     this.connection.close();
+  }
+
+
+  on_close(callback: () => void) {
+    this.connection.addEventListener("close", callback);
   }
 }
