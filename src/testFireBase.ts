@@ -4,7 +4,6 @@ import {
   ref,
   onValue,
   child,
-  get,
   remove,
   set,
   push,
@@ -16,8 +15,6 @@ export type CallUIHooks = {
   onPeerLeft: (peerUserId: string) => void;
   onStatusChange: (status: "connecting" | "connected" | "disconnected") => void;
 };
-
-// TODO: make desconnects trigger from FastPeerConnection state change instead of being triggered by firebase
 
 //get info from URL
 const params = new URLSearchParams(window.location.search);
@@ -63,7 +60,6 @@ const host_with_firebase = async (
 
   connection.on_ice_candidate((candidate) => {
       push(child(roomRef, "offerCandidates"), candidate.toJSON());
-
   })
 
   const offer = await connection.create_offer();
@@ -98,18 +94,16 @@ const join_with_firebase = (
   onValue(child(roomRef, "offer"), async (snapshot) => {
     const offer = snapshot.val();
     
-    if (!offer){
-      console.log(offer)
-      return;
-    }
-
+    if (offer){
     await connection.setRemoteDescription(offer);
 
     const answer = await connection.create_answer();
+    
     await set(child(roomRef, "answer"), {
       sdp: answer.sdp,
       type: answer.type,
     });
+  }
   });
 
   onValue(child(roomRef, "offerCandidates"), (snapshot) => {
@@ -120,14 +114,12 @@ const join_with_firebase = (
 };
 
 const create_connection = async (peerUserId: string) => {
-  const peerUserRef = user_path(peerUserId);
+  //const peerUserRef = user_path(peerUserId);
 
-  const peerRankSnapshot = await get(child(peerUserRef, "connectionRank")).then(
-    (s) => s.val(),
-  );
+  const peerUserRank: number =  Number(peerUserId); // rn Rank and ID are the same, might change later
 
   const signal_server: SignalServer = {
-    makes_first_move: userRank < peerRankSnapshot,
+    makes_first_move: Number(userRank) < peerUserRank,
     send_signal_state: async (state: string) => {
       console.log("Sending signal state:", state);
     },
@@ -152,18 +144,38 @@ const create_connection = async (peerUserId: string) => {
   } else {
     join_with_firebase(roomId!, connectionId, connection);
   }
-
+  
   await connection.on_ready();
 
   connection.on_close(() => {
     handle_peer_left(peerUserId);
   });
 
+  connection.on_disconnect(() => {
+    console.log(`Connection to peer ${peerUserId} disconnected`);
+    cleanup_firebase_connection(peerUserId);
+    onReconnect(peerUserId);
+  });
+
   uiHooks?.onStatusChange("connected");
 };
 
-// TODO: make this clean up left over connection and remove the connection form the db.
+const onReconnect = (peerUserId: string) => {
+  const connection = connections.get(peerUserId);
+  if (connection) {
+    connection.reconnect(() => {
+      console.log(`Reconnecting to peer ${peerUserId}...`);
+    });
+  }
+}
+
+const cleanup_firebase_connection = async (peerUserId: string) => {
+  const connectionRef = ref(db, `rooms/${roomId}/connections/${make_connection_id(userRank, peerUserId)}`);
+  await remove(connectionRef);
+};
+
 const handle_peer_left = (peerUserId: string) => {
+  console.log(`Peer ${peerUserId} has left the call`);
   connections.delete(peerUserId);
   uiHooks?.onPeerLeft(peerUserId);
 };

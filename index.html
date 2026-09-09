@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Game Lobby</title>
+    <title>Call Lobby</title>
     <style>
       * {
         box-sizing: border-box;
@@ -150,14 +150,14 @@
   <body>
     <div class="card">
       <div id="screen-choice">
-        <h1>Game Lobby</h1>
-        <p class="subtitle">Start a new game or join a friend</p>
+        <h1>Call Lobby</h1>
+        <p class="subtitle">Start a call or join</p>
         <div class="choice-buttons">
           <button class="btn-host" onclick="showScreen('host')">
-            Host Game
+            Host Call
           </button>
           <button class="btn-join" onclick="showScreen('join')">
-            Join Game
+            Join Call
           </button>
         </div>
       </div>
@@ -169,14 +169,14 @@
           <div class="label">ROOM CODE</div>
           <div class="code" id="generated-code">------</div>
         </div>
-        <button class="btn-host" onclick="startHosting()">Start Game</button>
+        <button class="btn-host" onclick="startHosting()">Start Call</button>
         <button class="btn-back" onclick="showScreen('choice')">
           &larr; Back
         </button>
       </div>
 
       <div id="screen-join" class="hidden">
-        <h1>Join Game</h1>
+        <h1>Join Call</h1>
         <p class="subtitle">Enter the room code</p>
         <input
           type="text"
