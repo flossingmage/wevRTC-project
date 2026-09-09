@@ -225,7 +225,7 @@ export class FastPeerConnection {
     });
   }
 
-  // TODO: implement screen sharing
+  // TODO: implement screen sharing. probably should remove this from FastPeerConnection.
   async share_screen() {
     const screenStream = await navigator.mediaDevices.getDisplayMedia({
       video: true,
@@ -250,7 +250,9 @@ export class FastPeerConnection {
    * whenever a state update is propogated from the
    * other end of the peer connection.
    */
-  //async set_peer_signal_state(state: string): Promise<void> {}
+  async set_peer_signal_state(state: string): Promise<void> {
+
+  }
 
   /**
    * Returns a promise that is fullfilled if a connection succesfully
@@ -349,7 +351,7 @@ export class FastPeerConnection {
 
   on_close(callback: () => void) {
     this.connection.addEventListener("connectionstatechange", () => {
-      if (this.connection.connectionState === "closed") {
+      if (this.connection.connectionState === "closed" || this.connection.connectionState === "failed") {
         console.log("Connection closed.");
         callback();
       }

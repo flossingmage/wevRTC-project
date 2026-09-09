@@ -184,12 +184,11 @@ export const register_ui_hooks = (hooks: CallUIHooks) => {
   uiHooks = hooks;
 };
 
-//TODO remove the onChildRemoved. Make clean up happen on rtc connection disconnect.  
 export const begin_connection = async () => {
   await get_local_preview_stream();
   await firebase_presence();
 
-  // TODO: right now the user ID is just the rank, might change to something else later.
+  // right now the user ID is just the rank, might change to something else later.
   const myUserIdStr = userRank;
   const usersRef = ref(db, `rooms/${roomId}/users`);
 
@@ -206,15 +205,6 @@ export const begin_connection = async () => {
       }
     });
   });
-
-  // Watch for peers to leave
-  // onChildRemoved(usersRef, (snapshot) => {
-  //   const peerUserId = snapshot.key;
-  //   if (peerUserId && peerUserId !== myUserIdStr) {
-  //     handle_peer_left(peerUserId);
-  //   }
-  // });
-
 };
 
 // TODO: add functinality to toggle mic
