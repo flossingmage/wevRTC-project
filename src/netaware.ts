@@ -25,11 +25,6 @@ export type SignalServer = {
   error_handler: () => Promise<void>;
 };
 
-export type SignalData = {
-  type: "offer" | "answer" | "ice-candidate";
-  data: any;
-};
-
 /**
  * A simple library for creating stable webrtc connections.
  * A connection fails completely if a dropped connection is
@@ -43,6 +38,7 @@ export class FastPeerConnection {
   // private readonly timeout_ms: number;
   private readonly connection: RTCPeerConnection;
   private data_channels: Map<string, RTCDataChannel>;
+  private peer_signal_state: string | null = null;
 
   /**
    * Make a {@link FastPeerConnection} with a {@link signal_server} and {@link timeout_ms}.
@@ -140,13 +136,22 @@ export class FastPeerConnection {
   /**
    * atempts to reconnect the peer connection if it has been disconnected.
    */
-  reconnect(callback: () => void) {
-    this.connection.addEventListener("connectionstatechange", () => {
-      if (this.connection.connectionState === "disconnected") {
-        console.log("Connection disconnected, attempting to reconnect...");
-        callback();
+  async reconnect(callback?: () => void) {
+    try {
+      this.connection.addEventListener("connectionstatechange", async () => {
+        if (this.connection.connectionState === "connected") {
+          console.log("Reconnection successful.");
+        }
         this.connection.restartIce();
-      }});
+        const offer = await this.create_offer();
+
+        await this.connection.setLocalDescription(offer);
+        callback?.();
+      });
+    } catch (err) {
+      console.error("Failed to reconnect:", err);
+      this.signal_server.error_handler();
+    }
   }
 
   /**
@@ -251,7 +256,7 @@ export class FastPeerConnection {
    * other end of the peer connection.
    */
   async set_peer_signal_state(state: string): Promise<void> {
-
+    this.peer_signal_state = state;
   }
 
   /**
@@ -282,6 +287,9 @@ export class FastPeerConnection {
         reject();
       } else {
         this.connection.addEventListener("connectionstatechange", () => {
+          console.log(
+            `Connection state changed to ${this.connection.connectionState}`,
+          );
           if (this.connection.connectionState === "connected") {
             console.log("Connection is ready.");
             resolve();
@@ -312,7 +320,7 @@ export class FastPeerConnection {
    * @param label The label of the data channel to send the data over.
    */
   send(data: string, label: string): void {
-      this.data_channels.get(label)?.send(data);
+    this.data_channels.get(label)?.send(data);
   }
 
   /**
@@ -340,19 +348,9 @@ export class FastPeerConnection {
     this.connection.close();
   }
 
-  on_disconnect(callback: () => void) {
+  onDisconnect(callback: () => void) {
     this.connection.addEventListener("connectionstatechange", () => {
       if (this.connection.connectionState === "disconnected") {
-        console.log("Connection disconnected, attempting to reconnect...");
-        callback();
-      }
-    });
-  }
-
-  on_close(callback: () => void) {
-    this.connection.addEventListener("connectionstatechange", () => {
-      if (this.connection.connectionState === "closed" || this.connection.connectionState === "failed") {
-        console.log("Connection closed.");
         callback();
       }
     });

@@ -1,14 +1,8 @@
 import { db } from "./firebase";
 import { FastPeerConnection, type SignalServer } from "./netaware";
-import {
-  ref,
-  onValue,
-  child,
-  remove,
-  set,
-  push,
-} from "firebase/database";
+import { ref, onValue, child, remove, set, push } from "firebase/database";
 
+//TODO make it so the call reconnects.
 export type CallUIHooks = {
   onLocalStream: (stream: MediaStream) => void;
   onRemoteStream: (peerUserId: string, stream: MediaStream) => void;
@@ -25,6 +19,21 @@ const connections = new Map<string, FastPeerConnection>();
 
 let uiHooks: CallUIHooks | null = null;
 let localStream: MediaStream | null = null;
+
+window.onload = async () => {
+  console.log("page loaded");
+};
+
+window.addEventListener("beforeunload", async () => {
+  await remove(user_path(userRank));
+  for (const peerUserId of connections.keys()) {
+    const connectionRef = ref(
+      db,
+      `rooms/${roomId}/connections/${make_connection_id(userRank, peerUserId)}`,
+    );
+    await remove(connectionRef);
+  }
+});
 
 const get_local_preview_stream = async (): Promise<MediaStream> => {
   if (localStream) return localStream;
@@ -59,8 +68,8 @@ const host_with_firebase = async (
   const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
 
   connection.on_ice_candidate((candidate) => {
-      push(child(roomRef, "offerCandidates"), candidate.toJSON());
-  })
+    push(child(roomRef, "offerCandidates"), candidate.toJSON());
+  });
 
   const offer = await connection.create_offer();
   await set(child(roomRef, "offer"), {
@@ -87,23 +96,23 @@ const join_with_firebase = (
 ) => {
   const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
 
-   connection.on_ice_candidate((candidate) => {
-      push(child(roomRef, "answerCandidates"), candidate.toJSON());
-   });
+  connection.on_ice_candidate((candidate) => {
+    push(child(roomRef, "answerCandidates"), candidate.toJSON());
+  });
 
   onValue(child(roomRef, "offer"), async (snapshot) => {
     const offer = snapshot.val();
-    
-    if (offer){
-    await connection.setRemoteDescription(offer);
 
-    const answer = await connection.create_answer();
-    
-    await set(child(roomRef, "answer"), {
-      sdp: answer.sdp,
-      type: answer.type,
-    });
-  }
+    if (offer) {
+      await connection.setRemoteDescription(offer);
+
+      const answer = await connection.create_answer();
+
+      await set(child(roomRef, "answer"), {
+        sdp: answer.sdp,
+        type: answer.type,
+      });
+    }
   });
 
   onValue(child(roomRef, "offerCandidates"), (snapshot) => {
@@ -114,20 +123,22 @@ const join_with_firebase = (
 };
 
 const create_connection = async (peerUserId: string) => {
+  console.log(`Creating connection with peer ${peerUserId}`);
   //const peerUserRef = user_path(peerUserId);
 
-  const peerUserRank: number =  Number(peerUserId); // rn Rank and ID are the same, might change later
+  const peerUserRank: number = Number(peerUserId); // rn Rank and ID are the same, might change later
 
   const signal_server: SignalServer = {
     makes_first_move: Number(userRank) < peerUserRank,
     send_signal_state: async (state: string) => {
-      console.log("Sending signal state:", state);
+      await set(child(user_path(peerUserId), "signal_state"), state)
     },
     error_handler: async () => {
       console.error("Fatal error occurred");
       uiHooks?.onStatusChange("disconnected");
     },
   };
+  
   const connection = new FastPeerConnection(signal_server, 1000);
   connections.set(peerUserId, connection);
 
@@ -144,35 +155,27 @@ const create_connection = async (peerUserId: string) => {
   } else {
     join_with_firebase(roomId!, connectionId, connection);
   }
-  
-  await connection.on_ready();
 
-  connection.on_close(() => {
+  connection.reconnect(() => {
+    console.log("Reconnection attempt finished.");
+  });
+
+  connection.onDisconnect(() => {
+    console.log(`Connection with peer ${peerUserId} disconnected.`);
+    uiHooks?.onStatusChange("disconnected");
     handle_peer_left(peerUserId);
   });
 
-  connection.on_disconnect(() => {
-    console.log(`Connection to peer ${peerUserId} disconnected`);
-    cleanup_firebase_connection(peerUserId);
-    onReconnect(peerUserId);
-  });
+  console.log("Waiting for connection to be ready...");
+  await connection.on_ready();
 
   uiHooks?.onStatusChange("connected");
 };
 
-const onReconnect = (peerUserId: string) => {
-  const connection = connections.get(peerUserId);
-  if (connection) {
-    connection.reconnect(() => {
-      console.log(`Reconnecting to peer ${peerUserId}...`);
-    });
-  }
-}
-
-const cleanup_firebase_connection = async (peerUserId: string) => {
-  const connectionRef = ref(db, `rooms/${roomId}/connections/${make_connection_id(userRank, peerUserId)}`);
-  await remove(connectionRef);
-};
+/**
+ * cleans up the firebase connections of the user
+ */
+const cleanup_firebase = async () => {};
 
 const handle_peer_left = (peerUserId: string) => {
   console.log(`Peer ${peerUserId} has left the call`);
@@ -185,6 +188,7 @@ export const register_ui_hooks = (hooks: CallUIHooks) => {
 };
 
 export const begin_connection = async () => {
+  console.log("beginning connection");
   await get_local_preview_stream();
   await firebase_presence();
 
@@ -205,6 +209,19 @@ export const begin_connection = async () => {
       }
     });
   });
+
+  // Remove peers when they leave
+  onValue(usersRef, (snapshot) => {
+    const currentPeers = new Set<string>();
+    snapshot.forEach((user) => {
+      currentPeers.add(user.key);
+    });
+    connections.forEach((conn, peerUserId) => {
+      if (!currentPeers.has(peerUserId)) {
+        handle_peer_left(peerUserId);
+      }
+    });
+  });
 };
 
 // TODO: add functinality to toggle mic
@@ -214,7 +231,7 @@ export const toggle_mic = (enabled: boolean) => {
   });
 };
 
-// TODO: add functinality to toggle camera
+// TODO: add functionality to toggle camera
 export const toggle_camera = (enabled: boolean) => {
   localStream?.getVideoTracks().forEach((track) => {
     track.enabled = enabled;
@@ -227,7 +244,7 @@ export const share_screen = () => {
 };
 
 export const leave_call = async () => {
-  await remove(user_path(userRank));
+  await cleanup_firebase();
   localStream?.getTracks().forEach((track) => track.stop());
   connections.clear();
 };
