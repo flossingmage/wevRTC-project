@@ -172,11 +172,6 @@ const create_connection = async (peerUserId: string) => {
   uiHooks?.onStatusChange("connected");
 };
 
-/**
- * cleans up the firebase connections of the user
- */
-const cleanup_firebase = async () => {};
-
 const handle_peer_left = (peerUserId: string) => {
   console.log(`Peer ${peerUserId} has left the call`);
   connections.delete(peerUserId);
@@ -216,7 +211,7 @@ export const begin_connection = async () => {
     snapshot.forEach((user) => {
       currentPeers.add(user.key);
     });
-    connections.forEach((conn, peerUserId) => {
+    connections.forEach((_conn, peerUserId) => {
       if (!currentPeers.has(peerUserId)) {
         handle_peer_left(peerUserId);
       }
@@ -244,7 +239,6 @@ export const share_screen = () => {
 };
 
 export const leave_call = async () => {
-  await cleanup_firebase();
   localStream?.getTracks().forEach((track) => track.stop());
   connections.clear();
 };
