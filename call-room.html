@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Call Room</title>
+    <link rel="icon" type="image/png" href="/favicon.png" />
     <style>
       * {
         box-sizing: border-box;
@@ -99,6 +100,9 @@
       }
 
       .video-tile .tag {
+        display: flex;
+        align-items: center;
+        gap: 6px;
         position: absolute;
         bottom: 10px;
         left: 12px;
@@ -239,22 +243,49 @@
 
         const tag = document.createElement("span");
         tag.className = "tag";
-        tag.textContent = "Peer";
+        const dot = document.createElement("span");
+        dot.className = "status-dot " + (peerStatuses.get(peerUserId) ?? "");
+        tag.append(dot, document.createTextNode("Peer"));
 
         tile.append(video, placeholder, tag);
         tilesContainer.appendChild(tile);
 
-        const entry = { tile, video, placeholder };
+        const entry = { tile, video, placeholder, dot };
         remoteTiles.set(peerUserId, entry);
         return entry;
       };
 
       const remove_remote_tile = (peerUserId) => {
+        peerStatuses.delete(peerUserId);
+        update_header_status();
         const entry = remoteTiles.get(peerUserId);
         if (!entry) return;
         entry.video.srcObject = null;
         entry.tile.remove();
         remoteTiles.delete(peerUserId);
+      };
+
+      // per-peer connection status, so one peer dropping doesn't mark the whole call as disconnected
+      const peerStatuses = new Map();
+
+      const update_header_status = () => {
+        const statuses = [...peerStatuses.values()];
+        let dotClass, text;
+        if (statuses.includes("connected")) {
+          dotClass = "connected";
+          text = "Connected";
+        } else if (statuses.includes("connecting")) {
+          dotClass = "";
+          text = "Connecting...";
+        } else if (statuses.length === 0) {
+          dotClass = "";
+          text = "Waiting for others...";
+        } else {
+          dotClass = "disconnected";
+          text = "Disconnected";
+        }
+        statusDot.className = "status-dot " + dotClass;
+        statusText.textContent = text;
       };
 
       register_ui_hooks({
@@ -270,14 +301,11 @@
         onPeerLeft: (peerUserId) => {
           remove_remote_tile(peerUserId);
         },
-        onStatusChange: (status) => {
-          statusDot.className = "status-dot " + status;
-          statusText.textContent =
-            status === "connected"
-              ? "Connected"
-              : status === "connecting"
-                ? "Connecting..."
-                : "Disconnected";
+        onStatusChange: (peerUserId, status) => {
+          peerStatuses.set(peerUserId, status);
+          const entry = remoteTiles.get(peerUserId);
+          if (entry) entry.dot.className = "status-dot " + status;
+          update_header_status();
         },
       });
 

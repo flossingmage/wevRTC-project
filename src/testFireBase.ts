@@ -7,7 +7,10 @@ export type CallUIHooks = {
   onLocalStream: (stream: MediaStream) => void;
   onRemoteStream: (peerUserId: string, stream: MediaStream) => void;
   onPeerLeft: (peerUserId: string) => void;
-  onStatusChange: (status: "connecting" | "connected" | "disconnected") => void;
+  onStatusChange: (
+    peerUserId: string,
+    status: "connecting" | "connected" | "disconnected",
+  ) => void;
 };
 
 //get info from URL
@@ -23,17 +26,6 @@ let localStream: MediaStream | null = null;
 window.onload = async () => {
   console.log("page loaded");
 };
-
-window.addEventListener("beforeunload", async () => {
-  await remove(user_path(userRank));
-  for (const peerUserId of connections.keys()) {
-    const connectionRef = ref(
-      db,
-      `rooms/${roomId}/connections/${make_connection_id(userRank, peerUserId)}`,
-    );
-    await remove(connectionRef);
-  }
-});
 
 const get_local_preview_stream = async (): Promise<MediaStream> => {
   if (localStream) return localStream;
@@ -135,7 +127,7 @@ const create_connection = async (peerUserId: string) => {
     },
     error_handler: async () => {
       console.error("Fatal error occurred");
-      uiHooks?.onStatusChange("disconnected");
+      uiHooks?.onStatusChange(peerUserId, "disconnected");
     },
   };
 
@@ -146,7 +138,7 @@ const create_connection = async (peerUserId: string) => {
     uiHooks?.onRemoteStream(peerUserId, stream);
   });
 
-  uiHooks?.onStatusChange("connecting");
+  uiHooks?.onStatusChange(peerUserId, "connecting");
 
   const connectionId = make_connection_id(userRank, peerUserId);
 
@@ -162,14 +154,14 @@ const create_connection = async (peerUserId: string) => {
 
   connection.onDisconnect(() => {
     console.log(`Connection with peer ${peerUserId} disconnected.`);
-    uiHooks?.onStatusChange("disconnected");
+    uiHooks?.onStatusChange(peerUserId, "disconnected");
     handle_peer_left(peerUserId);
   });
 
   console.log("Waiting for connection to be ready...");
   await connection.on_ready();
 
-  uiHooks?.onStatusChange("connected");
+  uiHooks?.onStatusChange(peerUserId, "connected");
 };
 
 const handle_peer_left = (peerUserId: string) => {
@@ -239,6 +231,20 @@ export const share_screen = () => {
 };
 
 export const leave_call = async () => {
-  localStream?.getTracks().forEach((track) => track.stop());
+  // remove this user and their connection data from the room
+  await remove(user_path(userRank));
+  await Promise.all(
+    [...connections.keys()].map((peerUserId) =>
+      remove(
+        ref(
+          db,
+          `rooms/${roomId}/connections/${make_connection_id(userRank, peerUserId)}`,
+        ),
+      ),
+    ),
+  );
+
+  connections.forEach((conn) => conn.close());
   connections.clear();
+  localStream?.getTracks().forEach((track) => track.stop());
 };
