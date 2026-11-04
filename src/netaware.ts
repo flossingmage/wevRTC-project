@@ -134,27 +134,6 @@ export class FastPeerConnection {
   }
 
   /**
-   * atempts to reconnect the peer connection if it has been disconnected.
-   */
-  async reconnect(callback?: () => void) {
-    try {
-      this.connection.addEventListener("connectionstatechange", async () => {
-        if (this.connection.connectionState === "connected") {
-          console.log("Reconnection successful.");
-        }
-        this.connection.restartIce();
-        const offer = await this.create_offer();
-
-        await this.connection.setLocalDescription(offer);
-        callback?.();
-      });
-    } catch (err) {
-      console.error("Failed to reconnect:", err);
-      this.signal_server.error_handler();
-    }
-  }
-
-  /**
    * Creates a new data channel. if a listener is provided, it will be called whenever a message is received on the data channel.
    * @param label The label of the data channel to create.
    * @param listener An optional listener to receive messages from the data channel.

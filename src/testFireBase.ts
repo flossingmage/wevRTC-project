@@ -2,7 +2,6 @@ import { db } from "./firebase";
 import { FastPeerConnection, type SignalServer } from "./netaware";
 import { ref, onValue, child, remove, set, push } from "firebase/database";
 
-//TODO make it so the call reconnects.
 export type CallUIHooks = {
   onLocalStream: (stream: MediaStream) => void;
   onRemoteStream: (peerUserId: string, stream: MediaStream) => void;
@@ -47,17 +46,26 @@ const user_path = (userId: string | number) =>
  */
 const make_connection_id = (a: string, b: string) => [a, b].sort().join("_");
 
+/**
+ * @param connectionId the connection ID from {@link make_connection_id}
+ * @param gen the generation of this connection attempt, starting at 0
+ * @returns ref to rooms/{roomId}/connections/{connectionId}/gen_{gen}, which holds
+ * the offer, offerCandidates, answer, and answerCandidates for that generation.
+ */
+const connection_gen_ref = (connectionId: string, gen: number) =>
+  ref(db, `rooms/${roomId}/connections/${connectionId}/gen_${gen}`);
+
 const firebase_presence = async () => {
   const myUserRef = user_path(userRank);
   await set(myUserRef, { userRank });
 };
 
 const host_with_firebase = async (
-  roomId: string,
   connectionId: string,
+  gen: number,
   connection: FastPeerConnection,
 ) => {
-  const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
+  const roomRef = connection_gen_ref(connectionId, gen);
 
   connection.on_ice_candidate((candidate) => {
     push(child(roomRef, "offerCandidates"), candidate.toJSON());
@@ -82,11 +90,11 @@ const host_with_firebase = async (
 };
 
 const join_with_firebase = (
-  roomId: string,
   connectionId: string,
+  gen: number,
   connection: FastPeerConnection,
 ) => {
-  const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
+  const roomRef = connection_gen_ref(connectionId, gen);
 
   connection.on_ice_candidate((candidate) => {
     push(child(roomRef, "answerCandidates"), candidate.toJSON());
@@ -142,15 +150,14 @@ const create_connection = async (peerUserId: string) => {
 
   const connectionId = make_connection_id(userRank, peerUserId);
 
-  if (signal_server.makes_first_move) {
-    host_with_firebase(roomId!, connectionId, connection);
-  } else {
-    join_with_firebase(roomId!, connectionId, connection);
-  }
+  // first connection attempt is generation 0
+  const gen = 0;
 
-  connection.reconnect(() => {
-    console.log("Reconnection attempt finished.");
-  });
+  if (signal_server.makes_first_move) {
+    host_with_firebase(connectionId, gen, connection);
+  } else {
+    join_with_firebase(connectionId, gen, connection);
+  }
 
   connection.onDisconnect(() => {
     console.log(`Connection with peer ${peerUserId} disconnected.`);
