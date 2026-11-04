@@ -22,8 +22,8 @@ export type CallUIHooks = {
 
 //get info from URL
 const params = new URLSearchParams(window.location.search);
-const roomId = params.get("code");
-const userRank = params.get("rank")!; // this should never be null
+const roomId = params.get("code")!;
+const userRank = params.get("rank")!;
 
 const connections = new Map<string, FastPeerConnection>();
 
@@ -87,9 +87,9 @@ const create_connection = async (peerUserId: string) => {
   const connectionId = make_connection_id(userRank, peerUserId);
 
   if (signal_server.makes_first_move) {
-    conn.host_with_firebase(roomId!, connectionId);
+    conn.host_with_firebase(roomId, connectionId);
   } else {
-    conn.join_with_firebase(roomId!, connectionId);
+    conn.join_with_firebase(roomId, connectionId);
   }
 
   await conn.on_ready();
