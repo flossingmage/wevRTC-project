@@ -298,11 +298,11 @@
         window.location.href = "/";
       });
 
-      begin_connection().catch((err) => {
-        console.error("Failed to join call:", err);
-        statusText.textContent = "Failed to connect";
-        statusDot.className = "status-dot disconnected";
-      });
+       begin_connection().catch((err) => {
+         console.error("Failed to join call:", err);
+         statusText.textContent = "Failed to connect";
+         statusDot.className = "status-dot disconnected";
+       });
     </script>
   </body>
 </html>

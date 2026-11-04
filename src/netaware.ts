@@ -1,6 +1,3 @@
-import { db } from "./firebase.ts";
-import { ref, push, set, onValue, child } from "firebase/database";
-
 export type SignalServer = {
   /**
    * Which end of the connection initiates, i.e. makes the first move.
@@ -12,8 +9,7 @@ export type SignalServer = {
    * our two ends of the connection need to negotiate the connection itself first.
    * They would, for example, exchange IP addresses and which underlying connection method (TCP, UDP, etc.)
    * they support. This {@link send_signal_state} allows both of our servers to exchange shared state.
-   * The channel is provi
-   * ded by the user of {@link FastPeerConnection}.
+   * The channel is provided by the user of {@link FastPeerConnection}.
    *
    * @param state An arbitrary state string the server wants to send to the other end of the {@link FastPeerConnection}.
    * @returns A promise that is fullfilled when the message has been succesfully sent to the other end of
@@ -33,15 +29,16 @@ export type SignalServer = {
  * A simple library for creating stable webrtc connections.
  * A connection fails completely if a dropped connection is
  * not restored within timeout_ms.
- * TODO: implement timeout_ms, make it so fastpeerconnection uses signal_server 
- * TODO: make fastpeerconnection more generic (move firebase stuff out, and get rid of the messeging system and make it so that the user can implement their own messeging system)
+ * TODO: implement timeout_ms, make it so fastpeerconnection uses signal_server
+ * TODO: make fastpeerconnection more generic (get rid of the messeging system and make it so that the user can implement their own messeging system,
+ * TODO: change media stream
  */
 export class FastPeerConnection {
   private readonly signal_server: SignalServer;
   // private readonly timeout_ms: number;
-  private readonly message_queue: string[];
   private readonly connection: RTCPeerConnection;
   private data_channels: Map<string, RTCDataChannel>;
+  private peer_signal_state: string | null = null;
 
   /**
    * Make a {@link FastPeerConnection} with a {@link signal_server} and {@link timeout_ms}.
@@ -50,7 +47,6 @@ export class FastPeerConnection {
   constructor(signal_server: SignalServer, timeout_ms: number) {
     this.signal_server = signal_server;
     // this.timeout_ms = timeout_ms;
-    this.message_queue = [];
     this.data_channels = new Map<string, RTCDataChannel>();
 
     const config = {
@@ -59,29 +55,9 @@ export class FastPeerConnection {
 
     this.connection = new RTCPeerConnection(config);
 
-    if (this.signal_server.makes_first_move) {
-      const data_channel = this.createDataChannel("message");
-      data_channel.addEventListener("open", () => {
-        while (this.message_queue.length > 0) {
-          this.send(String(this.message_queue.shift()), "message");
-        }
-      });
-    } else {
-      this.connection.ondatachannel = (event) => {
-        this.addDataChannel(event);
-      };
-
-      const listener = (event: RTCDataChannelEvent) => {
-        if (event.channel.label !== "message") return;
-
-        while (this.message_queue.length > 0) {
-          this.send(String(this.message_queue.shift()), "message");
-        }
-        // remove event listener after first message channel is established
-        this.connection.removeEventListener("datachannel", listener);
-      };
-      this.connection.addEventListener("datachannel", listener);
-    }
+    this.connection.ondatachannel = (event) => {
+      this.setDataChannel(event.channel);
+    };
 
     this.connection.onconnectionstatechange = () => {
       switch (this.connection.connectionState) {
@@ -90,7 +66,6 @@ export class FastPeerConnection {
           break;
         case "disconnected":
           console.log("Connection disconnected");
-          this.close();
           break;
         case "failed":
           console.log("Connection failed");
@@ -103,126 +78,110 @@ export class FastPeerConnection {
     };
   }
 
-  host_with_firebase(roomId: string, connectionId: string) {
-    const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
-
-    this.connection.onicecandidate = (event) => {
-      if (event.candidate)
-        push(child(roomRef, "offerCandidates"), event.candidate.toJSON());
-    };
-
-    this.connection.createOffer().then(async (offer) => {
+  /**
+   * creates, sets local description, and returns an offer.
+   * @returns offer.
+   */
+  create_offer() {
+    return this.connection.createOffer().then(async (offer) => {
       await this.connection.setLocalDescription(offer);
-      await set(child(roomRef, "offer"), {
-        sdp: offer.sdp,
-        type: offer.type,
-      });
-    });
-
-    onValue(child(roomRef, "answer"), async (snapshot) => {
-      const answer = snapshot.val();
-      if (answer && !this.connection.currentRemoteDescription) {
-        await this.connection.setRemoteDescription(
-          new RTCSessionDescription(answer),
-        );
-      }
-    });
-
-    onValue(child(roomRef, "answerCandidates"), (snapshot) => {
-      snapshot.forEach((candidate) => {
-        this.connection.addIceCandidate(new RTCIceCandidate(candidate.val()));
-      });
+      return offer;
     });
   }
 
-  join_with_firebase(roomId: string, connectionId: string) {
-    const roomRef = ref(db, `rooms/${roomId}/connections/${connectionId}`);
-
-    this.connection.onicecandidate = (event) => {
-      if (event.candidate)
-        push(child(roomRef, "answerCandidates"), event.candidate.toJSON());
-    };
-
-    onValue(child(roomRef, "offer"), async (snapshot) => {
-      const offer = snapshot.val();
-      if (offer && !this.connection.currentRemoteDescription) {
-        await this.connection.setRemoteDescription(
-          new RTCSessionDescription(offer),
-        );
-        const answer = await this.connection.createAnswer();
-        await this.connection.setLocalDescription(answer);
-        await set(child(roomRef, "answer"), {
-          sdp: answer.sdp,
-          type: answer.type,
-        });
-      }
-    });
-
-    onValue(child(roomRef, "offerCandidates"), (snapshot) => {
-      snapshot.forEach((candidate) => {
-        this.connection.addIceCandidate(new RTCIceCandidate(candidate.val()));
-      });
+  /**
+   * creates, sets local description, and returns and answer.
+   * @returns answer.
+   */
+  create_answer() {
+    return this.connection.createAnswer().then(async (answer) => {
+      await this.connection.setLocalDescription(answer);
+      return answer;
     });
   }
 
-  connect_with_webSockets(ws: WebSocket) {
+  /**
+   * called by the 3rd party signaling mechanism to set the remote description of the peer connection.
+   * @param discription the remote description to set.
+   */
+  async setRemoteDescription(discription: RTCSessionDescriptionInit) {
+    if (!this.connection.currentRemoteDescription && discription != null) {
+      await this.connection.setRemoteDescription(
+        new RTCSessionDescription(discription),
+      );
+    }
+  }
+
+  /**
+   * called by the 3rd party signaling mechanism to add a new ice candidate to the peer connection.
+   * @param candidate ice candidate to add.
+   */
+  add_ice_candidate(candidate: RTCIceCandidate) {
+    this.connection.addIceCandidate(candidate);
+  }
+
+  /**
+   * called by the 3rd party signaling mechanism to attach a listener to the on ice candidate event.
+   * @param callback a function that will be called whenever a new ice candidate is generated by the peer connection.
+   * The callback will be passed the new ice candidate as an argument.
+   */
+  on_ice_candidate(callback: (candidate: RTCIceCandidate) => void) {
     this.connection.onicecandidate = (event) => {
       if (event.candidate) {
-        if (ws.readyState === ws.OPEN)
-          ws.send(
-            JSON.stringify({
-              type: "ice-candidate",
-              candidate: event.candidate,
-            }),
-          );
-      }
-    };
-
-    ws.onmessage = async (message) => {
-      const data = JSON.parse(message.data);
-      switch (data.type) {
-        case "offer":
-          await this.connection.setRemoteDescription(
-            new RTCSessionDescription(data.offer),
-          );
-          const answer = await this.connection.createAnswer();
-          await this.connection.setLocalDescription(answer);
-          ws.send(JSON.stringify({ type: "answer", answer }));
-          ws.close();
-          break;
-        case "answer":
-          await this.connection.setRemoteDescription(
-            new RTCSessionDescription(data.answer),
-          );
-          ws.close();
-          break;
-        case "ice-candidate":
-          await this.connection.addIceCandidate(
-            new RTCIceCandidate(data.candidate),
-          );
-          break;
+        callback(event.candidate);
       }
     };
   }
 
-  send_webSocket_offer(ws: WebSocket) {
-    this.connection.createOffer().then(async (offer) => {
-      await this.connection.setLocalDescription(offer);
-      ws.send(JSON.stringify({ type: "offer", offer }));
-    });
+  /**
+   * atempts to reconnect the peer connection if it has been disconnected.
+   */
+  async reconnect(callback?: () => void) {
+    try {
+      this.connection.addEventListener("connectionstatechange", async () => {
+        if (this.connection.connectionState === "connected") {
+          console.log("Reconnection successful.");
+        }
+        this.connection.restartIce();
+        const offer = await this.create_offer();
+
+        await this.connection.setLocalDescription(offer);
+        callback?.();
+      });
+    } catch (err) {
+      console.error("Failed to reconnect:", err);
+      this.signal_server.error_handler();
+    }
   }
 
-  createDataChannel(label: string) {
+  /**
+   * Creates a new data channel. if a listener is provided, it will be called whenever a message is received on the data channel.
+   * @param label The label of the data channel to create.
+   * @param listener An optional listener to receive messages from the data channel.
+   * @returns The created data channel.
+   */
+  createDataChannel(label: string, listener?: (message: string) => void) {
     const data_channel = this.connection.createDataChannel(label);
+    this.setDataChannel(data_channel);
     this.data_channels.set(data_channel.label, data_channel);
     data_channel.onopen = () => {
-      this.listen(data_channel, (message) => {
-        console.log(message);
-      });
+      this.listen(
+        data_channel,
+        listener
+          ? listener
+          : (message) => {
+              console.log(message);
+            },
+      );
     };
     return data_channel;
   }
 
+  /**
+   * gets the data channel with a given label. If the data channel does not exist, it will wait until it is created and then return it.
+   * @param label The label of the data channel to get.
+   * @returns A promise that resolves to the data channel with the given label.
+   */
   getDataChannel(label: string): Promise<RTCDataChannel> {
     const data_channel = this.data_channels.get(label);
     if (data_channel) return Promise.resolve(data_channel);
@@ -240,25 +199,29 @@ export class FastPeerConnection {
     });
   }
 
-  addDataChannel(event: RTCDataChannelEvent) {
-    const data_channel = event.channel;
+  /**
+   * sets the data channel in data_channels map
+   * @param channel RTCDataChannel to set.
+   */
+  setDataChannel(channel: RTCDataChannel) {
+    const data_channel = channel;
     this.data_channels.set(data_channel.label, data_channel);
-    this.listen(data_channel, (message) => {
-      console.log(message);
-    });
   }
 
   /**
    * establishes media stream between peers.
-   * @param constraints
+   * @param constraints the media stream constraints to use when getting the local media stream.
+   * @param onRemoteStream an optional callback to receive the remote media stream.
+   * @returns a promise that resolves when the media stream has been established.
    */
   async addMediaStream(
     constraints: MediaStreamConstraints,
     onRemoteStream?: (stream: MediaStream) => void,
   ) {
-    const localStream = await navigator.mediaDevices.getUserMedia(constraints);
-    localStream.getTracks().forEach((track) => {
-      this.connection.addTrack(track, localStream);
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+
+    stream.getTracks().forEach((track) => {
+      this.connection.addTrack(track, stream);
     });
 
     this.connection.addEventListener("track", (event) => {
@@ -267,7 +230,7 @@ export class FastPeerConnection {
     });
   }
 
-  // TODO: implement screen sharing
+  // TODO: implement screen sharing. probably should remove this from FastPeerConnection.
   async share_screen() {
     const screenStream = await navigator.mediaDevices.getDisplayMedia({
       video: true,
@@ -285,20 +248,16 @@ export class FastPeerConnection {
     } else {
       this.connection.addTrack(videoTrack, screenStream);
     }
-
-    videoTrack.onended = () => {
-      this.stop_Screen_Share();
-    };
   }
 
-  // TODO: implement stop screen sharing
-  stop_Screen_Share() {}
   /**
    * Called by the third-party signaling mechanism
    * whenever a state update is propogated from the
    * other end of the peer connection.
    */
-  // async set_peer_signal_state(state: string): Promise<void> {}
+  async set_peer_signal_state(state: string): Promise<void> {
+    this.peer_signal_state = state;
+  }
 
   /**
    * Returns a promise that is fullfilled if a connection succesfully
@@ -328,6 +287,9 @@ export class FastPeerConnection {
         reject();
       } else {
         this.connection.addEventListener("connectionstatechange", () => {
+          console.log(
+            `Connection state changed to ${this.connection.connectionState}`,
+          );
           if (this.connection.connectionState === "connected") {
             console.log("Connection is ready.");
             resolve();
@@ -344,10 +306,7 @@ export class FastPeerConnection {
    * If you want to receive every message sent over this channel,
    * register the listener before updating the {@link peer_signal_state}.
    */
-  listen(
-    data_channel: RTCDataChannel,
-    listener: (message: string) => void,
-  ): void {
+  listen(data_channel: RTCDataChannel, listener: (message: string) => void) {
     data_channel.addEventListener("message", (event) => {
       listener(event.data);
     });
@@ -356,16 +315,12 @@ export class FastPeerConnection {
   /**
    * Send data over the WebRTC channel. Messages should be enqueued if a
    * connection has not been established.
+   * TODO: might remove message queue or the entire send method. Might make it so that the user has to implement their own messaging system.
+   * @param data The data to send.
+   * @param label The label of the data channel to send the data over.
    */
   send(data: string, label: string): void {
-    if (
-      !this.data_channels.get(label) ||
-      this.data_channels.get(label)!.readyState !== "open"
-    ) {
-      if (label === "message") this.message_queue.push(data);
-    } else {
-      this.data_channels.get(label)!.send(data);
-    }
+    this.data_channels.get(label)?.send(data);
   }
 
   /**
@@ -376,13 +331,6 @@ export class FastPeerConnection {
 
     // close media
     this.connection.getSenders().forEach((sender) => sender.track?.stop());
-
-    const localVideo = document.querySelector<HTMLVideoElement>("#localVideo");
-    if (localVideo) localVideo.srcObject = null;
-
-    const remoteVideo =
-      document.querySelector<HTMLVideoElement>("#remoteVideo");
-    if (remoteVideo) remoteVideo.srcObject = null;
 
     // close data channels
     for (const channel of this.data_channels.values()) {
@@ -398,5 +346,13 @@ export class FastPeerConnection {
 
     //close connection
     this.connection.close();
+  }
+
+  onDisconnect(callback: () => void) {
+    this.connection.addEventListener("connectionstatechange", () => {
+      if (this.connection.connectionState === "disconnected") {
+        callback();
+      }
+    });
   }
 }
