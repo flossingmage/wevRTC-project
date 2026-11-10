@@ -326,12 +326,4 @@ export class FastPeerConnection {
     //close connection
     this.connection.close();
   }
-
-  onDisconnect(callback: () => void) {
-    this.connection.addEventListener("connectionstatechange", () => {
-      if (this.connection.connectionState === "disconnected") {
-        callback();
-      }
-    });
-  }
 }

@@ -1,6 +1,14 @@
 import { db } from "./firebase";
 import { FastPeerConnection, type SignalServer } from "./netaware";
-import { ref, onValue, child, remove, set, push } from "firebase/database";
+import {
+  ref,
+  onValue,
+  child,
+  remove,
+  set,
+  push,
+  onDisconnect,
+} from "firebase/database";
 
 export type CallUIHooks = {
   onLocalStream: (stream: MediaStream) => void;
@@ -58,6 +66,9 @@ const connection_gen_ref = (connectionId: string, gen: number) =>
 const firebase_presence = async () => {
   const myUserRef = user_path(userRank);
   await set(myUserRef, { userRank });
+
+  await set(child(myUserRef, "connected"), true);
+  await onDisconnect(child(myUserRef, "connected")).set(false);
 };
 
 const host_with_firebase = async (
@@ -150,6 +161,14 @@ const create_connection = async (peerUserId: string) => {
 
   const connectionId = make_connection_id(userRank, peerUserId);
 
+  onValue(child(user_path(peerUserId), "connected"), (snapshot) => {
+    console.log(`peer ${peerUserId} connection state: ${snapshot.val()}`);
+    // call ice restart
+    if (!snapshot.val()) {
+      
+    }
+  });
+
   // first connection attempt is generation 0
   const gen = 0;
 
@@ -158,12 +177,6 @@ const create_connection = async (peerUserId: string) => {
   } else {
     join_with_firebase(connectionId, gen, connection);
   }
-
-  connection.onDisconnect(() => {
-    console.log(`Connection with peer ${peerUserId} disconnected.`);
-    uiHooks?.onStatusChange(peerUserId, "disconnected");
-    handle_peer_left(peerUserId);
-  });
 
   console.log("Waiting for connection to be ready...");
   await connection.on_ready();
