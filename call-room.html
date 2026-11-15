@@ -214,22 +214,22 @@
         params.get("code") ?? "------";
 
       // define html elements
-      const tilesContainer = document.getElementById("tiles");
-      const localPlaceholder = document.getElementById("local-placeholder");
-      const localVideo = document.getElementById("local-video");
-      const statusDot = document.getElementById("status-dot");
-      const statusText = document.getElementById("status-text");
-      const micBtn = document.getElementById("mic-btn");
-      const camBtn = document.getElementById("cam-btn");
-      const hangupBtn = document.getElementById("hangup-btn");
+      const tiles_container = document.getElementById("tiles");
+      const local_placeholder = document.getElementById("local-placeholder");
+      const local_video = document.getElementById("local-video");
+      const status_dot = document.getElementById("status-dot");
+      const status_text = document.getElementById("status-text");
+      const mic_btn = document.getElementById("mic-btn");
+      const cam_btn = document.getElementById("cam-btn");
+      const hangup_btn = document.getElementById("hangup-btn");
 
-      let micOn = true;
-      let camOn = true;
+      let mic_on = true;
+      let cam_on = true;
 
       // managing tiles
-      const remoteTiles = new Map();
+      const remote_tiles = new Map();
 
-      const create_remote_tile = (peerUserId) => {
+      const create_remote_tile = (peer_user_id) => {
         const tile = document.createElement("div");
         tile.className = "video-tile";
 
@@ -244,92 +244,92 @@
         const tag = document.createElement("span");
         tag.className = "tag";
         const dot = document.createElement("span");
-        dot.className = "status-dot " + (peerStatuses.get(peerUserId) ?? "");
+        dot.className = "status-dot " + (peer_statuses.get(peer_user_id) ?? "");
         tag.append(dot, document.createTextNode("Peer"));
 
         tile.append(video, placeholder, tag);
-        tilesContainer.appendChild(tile);
+        tiles_container.appendChild(tile);
 
         const entry = { tile, video, placeholder, dot };
-        remoteTiles.set(peerUserId, entry);
+        remote_tiles.set(peer_user_id, entry);
         return entry;
       };
 
-      const remove_remote_tile = (peerUserId) => {
-        peerStatuses.delete(peerUserId);
+      const remove_remote_tile = (peer_user_id) => {
+        peer_statuses.delete(peer_user_id);
         update_header_status();
-        const entry = remoteTiles.get(peerUserId);
+        const entry = remote_tiles.get(peer_user_id);
         if (!entry) return;
         entry.video.srcObject = null;
         entry.tile.remove();
-        remoteTiles.delete(peerUserId);
+        remote_tiles.delete(peer_user_id);
       };
 
       // per-peer connection status, so one peer dropping doesn't mark the whole call as disconnected
-      const peerStatuses = new Map();
+      const peer_statuses = new Map();
 
       const update_header_status = () => {
-        const statuses = [...peerStatuses.values()];
-        let dotClass, text;
+        const statuses = [...peer_statuses.values()];
+        let dot_class, text;
         if (statuses.includes("connected")) {
-          dotClass = "connected";
+          dot_class = "connected";
           text = "Connected";
         } else if (statuses.includes("connecting")) {
-          dotClass = "";
+          dot_class = "";
           text = "Connecting...";
         } else if (statuses.length === 0) {
-          dotClass = "";
+          dot_class = "";
           text = "Waiting for others...";
         } else {
-          dotClass = "disconnected";
+          dot_class = "disconnected";
           text = "Disconnected";
         }
-        statusDot.className = "status-dot " + dotClass;
-        statusText.textContent = text;
+        status_dot.className = "status-dot " + dot_class;
+        status_text.textContent = text;
       };
 
       register_ui_hooks({
-        onLocalStream: (stream) => {
-          localVideo.srcObject = stream;
-          localPlaceholder.style.display = "none";
+        on_local_stream: (stream) => {
+          local_video.srcObject = stream;
+          local_placeholder.style.display = "none";
         },
-        onRemoteStream: (peerUserId, stream) => {
-          const entry = remoteTiles.get(peerUserId) ?? create_remote_tile(peerUserId);
+        on_remote_stream: (peer_user_id, stream) => {
+          const entry = remote_tiles.get(peer_user_id) ?? create_remote_tile(peer_user_id);
           entry.video.srcObject = stream;
           entry.placeholder.style.display = "none";
         },
-        onPeerLeft: (peerUserId) => {
-          remove_remote_tile(peerUserId);
+        on_peer_left: (peer_user_id) => {
+          remove_remote_tile(peer_user_id);
         },
-        onStatusChange: (peerUserId, status) => {
-          peerStatuses.set(peerUserId, status);
-          const entry = remoteTiles.get(peerUserId);
+        on_status_change: (peer_user_id, status) => {
+          peer_statuses.set(peer_user_id, status);
+          const entry = remote_tiles.get(peer_user_id);
           if (entry) entry.dot.className = "status-dot " + status;
           update_header_status();
         },
       });
 
-      micBtn.addEventListener("click", () => {
-        micOn = !micOn;
-        toggle_mic(micOn);
-        micBtn.classList.toggle("active-off", !micOn);
+      mic_btn.addEventListener("click", () => {
+        mic_on = !mic_on;
+        toggle_mic(mic_on);
+        mic_btn.classList.toggle("active-off", !mic_on);
       });
 
-      camBtn.addEventListener("click", () => {
-        camOn = !camOn;
-        toggle_camera(camOn);
-        camBtn.classList.toggle("active-off", !camOn);
+      cam_btn.addEventListener("click", () => {
+        cam_on = !cam_on;
+        toggle_camera(cam_on);
+        cam_btn.classList.toggle("active-off", !cam_on);
       });
 
-      hangupBtn.addEventListener("click", async () => {
+      hangup_btn.addEventListener("click", async () => {
         await leave_call();
         window.location.href = "/";
       });
 
        begin_connection().catch((err) => {
          console.error("Failed to join call:", err);
-         statusText.textContent = "Failed to connect";
-         statusDot.className = "status-dot disconnected";
+         status_text.textContent = "Failed to connect";
+         status_dot.className = "status-dot disconnected";
        });
     </script>
   </body>

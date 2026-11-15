@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getDatabase } from "firebase/database";
 
-const firebaseConfig = {
+const firebase_config = {
   apiKey: "AIzaSyCiI_KVMESXRv5TjH8zxMuiMGUbijN0BSM",
   authDomain: "webrtc-7eb8b.firebaseapp.com",
   databaseURL: "https://webrtc-7eb8b-default-rtdb.firebaseio.com",
@@ -12,5 +12,5 @@ const firebaseConfig = {
   measurementId: "G-VHMB815B2Q",
 };
 
-const app = initializeApp(firebaseConfig);
+const app = initializeApp(firebase_config);
 export const db = getDatabase(app);

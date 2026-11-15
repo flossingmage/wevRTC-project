@@ -25,6 +25,12 @@ export type SignalServer = {
   error_handler: () => Promise<void>;
 };
 
+type signal =
+  | { type: "offer"; offer: RTCSessionDescriptionInit; gen: number }
+  | { type: "answer"; answer: RTCSessionDescriptionInit; gen: number }
+  | { type: "ice_candidate"; candidate: RTCIceCandidateInit; gen: number }
+  | { type: "ping" };
+
 /**
  * A simple library for creating stable webrtc connections.
  * A connection fails completely if a dropped connection is
@@ -35,102 +41,120 @@ export type SignalServer = {
  */
 export class FastPeerConnection {
   private readonly signal_server: SignalServer;
-  // private readonly timeout_ms: number;
-  private readonly connection: RTCPeerConnection;
+  private readonly timeout_ms: number;
+  private readonly local_stream: MediaStream | null = null;
+  private readonly on_remote_stream: ((stream: MediaStream) => void) | null =
+    null;
+  private connection!: RTCPeerConnection;
   private data_channels: Map<string, RTCDataChannel>;
-  private peer_signal_state: string | null = null;
+  private gen = 0;
+  private waiting_for_connection = false;
+  private ready_waiters: (() => void)[] = [];
+  private disconnect_timer: ReturnType<typeof setTimeout> | null = null;
 
   /**
    * Make a {@link FastPeerConnection} with a {@link signal_server} and {@link timeout_ms}.
    * The connection that makes the first move should begin its work here.
    */
-  constructor(signal_server: SignalServer, timeout_ms: number) {
+  constructor(
+    signal_server: SignalServer,
+    timeout_ms: number,
+    local_stream: MediaStream | null = null,
+    on_remote_stream: ((stream: MediaStream) => void) | null = null,
+  ) {
     this.signal_server = signal_server;
-    // this.timeout_ms = timeout_ms;
+    this.timeout_ms = timeout_ms;
     this.data_channels = new Map<string, RTCDataChannel>();
+    this.local_stream = local_stream;
+    this.on_remote_stream = on_remote_stream;
 
+    if (signal_server.makes_first_move) {
+      this.offer().catch(() => this.signal_server.error_handler());
+    } else {
+      this.signal_server.send_signal_state(JSON.stringify({ type: "ping" }));
+    }
+  }
+
+  start_Connection_Attempt(gen: number) {
+    this.connection?.close();
+    this.gen = gen;
     const config = {
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     };
 
     this.connection = new RTCPeerConnection(config);
 
-    this.connection.ondatachannel = (event) => {
-      this.setDataChannel(event.channel);
+    this.local_stream?.getTracks().forEach((track) => {
+      this.connection.addTrack(track, this.local_stream!);
+    });
+
+    this.connection.ontrack = (event) => {
+      this.on_remote_stream?.(event.streams[0]);
     };
 
+    this.connection.onicecandidate = async (event) => {
+      event.candidate &&
+        this.signal_server.send_signal_state(
+          JSON.stringify({
+            type: "ice_candidate",
+            candidate: event.candidate,
+            gen: this.gen,
+          }),
+        );
+    };
+
+    const current_con = this.connection;
     this.connection.onconnectionstatechange = () => {
-      switch (this.connection.connectionState) {
-        case "connected":
-          console.log("Connection established");
-          break;
-        case "disconnected":
-          console.log("Connection disconnected");
-          break;
-        case "failed":
-          console.log("Connection failed");
-          break;
-        case "closed":
-          console.log("Connection closed");
-          this.close();
-          break;
+      if (current_con !== this.connection) return; // ignore old connections
+      if (this.connection.connectionState === "connected") {
+        this.ready_waiters.forEach((resolve) => resolve());
+        this.ready_waiters = [];
       }
     };
   }
 
   /**
-   * creates, sets local description, and returns an offer.
-   * @returns offer.
+   * Called by the third-party signaling mechanism
+   * whenever a state update is propogated from the
+   * other end of the peer connection.
    */
-  create_offer() {
-    return this.connection.createOffer().then(async (offer) => {
-      await this.connection.setLocalDescription(offer);
-      return offer;
-    });
-  }
+  async set_peer_signal_state(state: string): Promise<void> {
+    const signal: signal = JSON.parse(state);
+    if (signal.type === "ping") {
+      if (this.signal_server.makes_first_move) await this.offer();
+      return;
+    }
 
-  /**
-   * creates, sets local description, and returns and answer.
-   * @returns answer.
-   */
-  create_answer() {
-    return this.connection.createAnswer().then(async (answer) => {
+    if (signal.type === "offer") {
+      this.start_Connection_Attempt(signal.gen);
+      await this.connection.setRemoteDescription(signal.offer);
+      const answer = await this.connection.createAnswer();
       await this.connection.setLocalDescription(answer);
-      return answer;
-    });
-  }
-
-  /**
-   * called by the 3rd party signaling mechanism to set the remote description of the peer connection.
-   * @param discription the remote description to set.
-   */
-  async setRemoteDescription(discription: RTCSessionDescriptionInit) {
-    if (!this.connection.currentRemoteDescription && discription != null) {
-      await this.connection.setRemoteDescription(
-        new RTCSessionDescription(discription),
+      await this.signal_server.send_signal_state(
+        JSON.stringify({ type: "answer", answer, gen: this.gen }),
       );
+    }
+
+    if (signal.gen !== this.gen) return; // ignore old signals
+
+    if (signal.type === "answer") {
+      await this.connection.setRemoteDescription(signal.answer);
+    }
+
+    if (signal.type === "ice_candidate") {
+      await this.connection.addIceCandidate(signal.candidate);
     }
   }
 
-  /**
-   * called by the 3rd party signaling mechanism to add a new ice candidate to the peer connection.
-   * @param candidate ice candidate to add.
-   */
-  add_ice_candidate(candidate: RTCIceCandidate) {
-    this.connection.addIceCandidate(candidate);
-  }
-
-  /**
-   * called by the 3rd party signaling mechanism to attach a listener to the on ice candidate event.
-   * @param callback a function that will be called whenever a new ice candidate is generated by the peer connection.
-   * The callback will be passed the new ice candidate as an argument.
-   */
-  on_ice_candidate(callback: (candidate: RTCIceCandidate) => void) {
-    this.connection.onicecandidate = (event) => {
-      if (event.candidate) {
-        callback(event.candidate);
-      }
-    };
+  async offer(): Promise<void> {
+    if (this.waiting_for_connection) return;
+    this.waiting_for_connection = true;
+    this.start_Connection_Attempt(Date.now());
+    const offer = await this.connection.createOffer();
+    await this.connection.setLocalDescription(offer);
+    await this.signal_server.send_signal_state(
+      JSON.stringify({ type: "offer", offer, gen: this.gen }),
+    );
   }
 
   /**
@@ -188,57 +212,6 @@ export class FastPeerConnection {
   }
 
   /**
-   * establishes media stream between peers.
-   * @param constraints the media stream constraints to use when getting the local media stream.
-   * @param onRemoteStream an optional callback to receive the remote media stream.
-   * @returns a promise that resolves when the media stream has been established.
-   */
-  async addMediaStream(
-    constraints: MediaStreamConstraints,
-    onRemoteStream?: (stream: MediaStream) => void,
-  ) {
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-
-    stream.getTracks().forEach((track) => {
-      this.connection.addTrack(track, stream);
-    });
-
-    this.connection.addEventListener("track", (event) => {
-      const [remoteStream] = event.streams;
-      onRemoteStream?.(remoteStream);
-    });
-  }
-
-  // TODO: implement screen sharing. probably should remove this from FastPeerConnection.
-  async share_screen() {
-    const screenStream = await navigator.mediaDevices.getDisplayMedia({
-      video: true,
-    });
-
-    const videoTrack = screenStream.getVideoTracks()[0];
-
-    const sender = this.connection.getSenders();
-    const videoSender = sender.find(
-      (sender) => sender.track && sender.track.kind === "video",
-    );
-
-    if (videoSender) {
-      await videoSender.replaceTrack(videoTrack);
-    } else {
-      this.connection.addTrack(videoTrack, screenStream);
-    }
-  }
-
-  /**
-   * Called by the third-party signaling mechanism
-   * whenever a state update is propogated from the
-   * other end of the peer connection.
-   */
-  async set_peer_signal_state(state: string): Promise<void> {
-    this.peer_signal_state = state;
-  }
-
-  /**
    * Returns a promise that is fullfilled if a connection succesfully
    * connects, and fails if the connection irreparably fails and
    * times out. This method is useful if you have a thread that wants
@@ -257,27 +230,10 @@ export class FastPeerConnection {
    * ```
    */
   on_ready(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      if (this.connection.connectionState === "connected") {
-        console.log("Connection is ready.");
-        resolve();
-      } else if (this.connection.connectionState === "failed") {
-        console.log("Connection failed.");
-        reject();
-      } else {
-        this.connection.addEventListener("connectionstatechange", () => {
-          console.log(
-            `Connection state changed to ${this.connection.connectionState}`,
-          );
-          if (this.connection.connectionState === "connected") {
-            console.log("Connection is ready.");
-            resolve();
-          } else if (this.connection.connectionState === "failed") {
-            console.log("Connection failed.");
-            reject();
-          }
-        });
-      }
+    if (this.connection.connectionState === "connected")
+      return Promise.resolve();
+    return new Promise((resolve) => {
+      this.ready_waiters.push(resolve);
     });
   }
 
