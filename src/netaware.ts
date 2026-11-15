@@ -107,8 +107,12 @@ export class FastPeerConnection {
     this.connection.onconnectionstatechange = () => {
       if (current_con !== this.connection) return; // ignore old connections
       if (this.connection.connectionState === "connected") {
+        clearTimeout(this.disconnect_timer!);
         this.ready_waiters.forEach((resolve) => resolve());
         this.ready_waiters = [];
+      } else if (this.connection.connectionState === "disconnected") {
+        this.disconnect_timer = setTimeout(() => {}, this.timeout_ms);
+      } else if (this.connection.connectionState === "failed") {
       }
     };
   }

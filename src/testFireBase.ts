@@ -60,7 +60,7 @@ const firebase_presence = async () => {
 const create_connection = async (peer_user_id: string) => {
   console.log(`Creating connection with peer ${peer_user_id}`);
 
-  const peer_user_rank: number = Number(peer_user_id); // rn Rank and ID are the same, might change later
+  const peer_user_rank: number = Number(peer_user_id);
 
   const signal_server: SignalServer = {
     makes_first_move: Number(user_rank) < peer_user_rank,
