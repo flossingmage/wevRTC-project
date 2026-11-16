@@ -269,7 +269,9 @@ export class FastPeerConnection {
     if (!this.connection) return;
 
     // close media
-    this.connection.getSenders().forEach((sender) => sender.track?.stop());
+    this.connection.getSenders().forEach((sender) => {
+      this.connection.removeTrack(sender);
+    });
 
     // close data channels
     for (const channel of this.data_channels.values()) {
