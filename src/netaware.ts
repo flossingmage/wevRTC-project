@@ -234,7 +234,7 @@ export class FastPeerConnection {
    * ```
    */
   on_ready(): Promise<void> {
-    if (this.connection.connectionState === "connected")
+    if (this.connection?.connectionState === "connected")
       return Promise.resolve();
     return new Promise((resolve) => {
       this.ready_waiters.push(resolve);
