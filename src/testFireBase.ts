@@ -158,14 +158,12 @@ export const begin_connection = async () => {
   });
 };
 
-// TODO: add functinality to toggle mic
 export const toggle_mic = (enabled: boolean) => {
   local_stream?.getAudioTracks().forEach((track) => {
     track.enabled = enabled;
   });
 };
 
-// TODO: add functionality to toggle camera
 export const toggle_camera = (enabled: boolean) => {
   local_stream?.getVideoTracks().forEach((track) => {
     track.enabled = enabled;
