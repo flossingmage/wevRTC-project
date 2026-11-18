@@ -215,6 +215,13 @@ export class FastPeerConnection {
     this.data_channels.set(data_channel.label, data_channel);
   }
 
+  async replace_video_track(new_track: MediaStreamTrack): Promise<void> {
+    const sender = this.connection
+      ?.getSenders()
+      .find((sender) => sender.track?.kind === "video");
+    await sender?.replaceTrack(new_track);
+  }
+
   /**
    * Returns a promise that is fullfilled if a connection succesfully
    * connects, and fails if the connection irreparably fails and

@@ -213,6 +213,7 @@
         toggle_mic,
         toggle_camera,
         leave_call,
+        set_mirrored,
       } from "./src/testFireBase.js";
 
       //getting info from URL
@@ -331,9 +332,11 @@
       });
 
       // only flips your own preview; what peers receive is unchanged
-      mirror_btn.addEventListener("click", () => {
+      mirror_btn.addEventListener("click", async () => {
         mirrored = !mirrored;
         local_video.classList.toggle("mirrored", mirrored);
+        mirror_btn.classList.toggle("active-off", mirrored);
+        await set_mirrored(mirrored);
       });
 
       hangup_btn.addEventListener("click", async () => {

@@ -31,6 +31,8 @@ const unsub_listeners = new Map<string, () => void>();
 
 let ui_hooks: CallUIHooks | null = null;
 let local_stream: MediaStream | null = null;
+let merrored_local_stream: MediaStreamTrack | null = null;
+let outgoing_stream: MediaStream | null = null;
 
 const get_local_stream = async (): Promise<MediaStream> => {
   if (local_stream) return local_stream;
@@ -38,6 +40,7 @@ const get_local_stream = async (): Promise<MediaStream> => {
     video: true,
     audio: true,
   });
+  outgoing_stream = new MediaStream(local_stream.getTracks());
   ui_hooks?.on_local_stream(local_stream);
   return local_stream;
 };
@@ -124,6 +127,30 @@ const handle_peer_left = (peer_user_id: string) => {
   ui_hooks?.on_peer_left(peer_user_id);
 };
 
+const create_merrored_stream = async (stream: MediaStream) => {
+  const video = document.createElement("video");
+  video.srcObject = stream;
+  video.muted = true;
+  await video.play();
+
+  const canvas = document.createElement("canvas");
+  const settings = stream.getVideoTracks()[0].getSettings();
+  canvas.width = settings.width || 640;
+  canvas.height = settings.height || 480;
+
+  const ctx = canvas.getContext("2d")!;
+  ctx.translate(canvas.width, 0);
+  ctx.scale(-1, 1);
+
+  const draw = () => {
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    requestAnimationFrame(draw);
+  };
+  draw();
+
+  return canvas.captureStream(30).getVideoTracks()[0];
+};
+
 export const register_ui_hooks = (hooks: CallUIHooks) => {
   ui_hooks = hooks;
 };
@@ -185,6 +212,29 @@ export const leave_call = async () => {
   );
 
   connections.forEach((conn) => conn.close());
+  merrored_local_stream?.stop();
   connections.clear();
   local_stream?.getTracks().forEach((track) => track.stop());
+};
+
+export const set_mirrored = async (enabled: boolean) => {
+  if (!local_stream || !outgoing_stream) return;
+
+  if (enabled && !merrored_local_stream) {
+    merrored_local_stream = await create_merrored_stream(local_stream);
+  }
+
+  const new_track = enabled
+    ? merrored_local_stream!
+    : local_stream.getVideoTracks()[0];
+  const old_track = outgoing_stream?.getVideoTracks()[0];
+
+  outgoing_stream?.removeTrack(old_track!);
+  outgoing_stream?.addTrack(new_track);
+
+  await Promise.all(
+    [...connections.values()].map((conn) =>
+      conn.replace_video_track(new_track),
+    ),
+  );
 };
