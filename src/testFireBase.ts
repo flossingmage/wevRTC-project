@@ -170,9 +170,6 @@ export const toggle_camera = (enabled: boolean) => {
   });
 };
 
-// TODO: add functinality to share screen
-export const share_screen = () => {};
-
 export const leave_call = async () => {
   // remove this user and their connection data from the room
   await remove(user_path(user_rank));

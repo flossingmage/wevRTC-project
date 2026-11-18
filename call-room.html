@@ -99,6 +99,10 @@
         object-fit: cover;
       }
 
+      .video-tile video.mirrored {
+        transform: scaleX(-1);
+      }
+
       .video-tile .tag {
         display: flex;
         align-items: center;
@@ -194,6 +198,9 @@
         🎤
       </button>
       <button class="control-btn" id="cam-btn" title="Toggle camera">📷</button>
+      <button class="control-btn" id="mirror-btn" title="Mirror my video">
+        ↔️
+      </button>
       <button class="control-btn hang-up" id="hangup-btn" title="Leave call">
         📞
       </button>
@@ -222,9 +229,11 @@
       const mic_btn = document.getElementById("mic-btn");
       const cam_btn = document.getElementById("cam-btn");
       const hangup_btn = document.getElementById("hangup-btn");
+      const mirror_btn = document.getElementById("mirror-btn");
 
       let mic_on = true;
       let cam_on = true;
+      let mirrored = false;
 
       // managing tiles
       const remote_tiles = new Map();
@@ -319,6 +328,12 @@
         cam_on = !cam_on;
         toggle_camera(cam_on);
         cam_btn.classList.toggle("active-off", !cam_on);
+      });
+
+      // only flips your own preview; what peers receive is unchanged
+      mirror_btn.addEventListener("click", () => {
+        mirrored = !mirrored;
+        local_video.classList.toggle("mirrored", mirrored);
       });
 
       hangup_btn.addEventListener("click", async () => {
